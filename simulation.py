@@ -22,10 +22,10 @@ def symmetric_anchors(l):
     #anchors[A, Z] = 0 # Fixated
     anchors[B, X] = l*np.cos(np.pi/6)
     anchors[B, Y] = l*np.sin(np.pi/6)
-    #anchors[B, Z] = 0
+    #anchors[B, Z] = 0 # Fixated
     anchors[C, X] = -l*np.cos(np.pi/6)
     anchors[C, Y] = l*np.sin(np.pi/6)
-    #anchors[C, Z] = 0
+    #anchors[C, Z] = 0 # Fixated
     #anchors[D, X] = 0 # Fixated
     #anchors[D, Y] = 0 # Fixated
     anchors[D, Z] = l
@@ -40,8 +40,9 @@ def irregular_anchors(l, fuzz_percentage = .2):
 
     Each dimension of each anchor is treated separately to
     resemble the use case.
-    For example: Z-positions of B- and C anchors are extremely
-    rarely more than 300 mm below the A anchor
+    Six anchor coordinates must be constant and known
+    for the coordinate system to be uniquely defined by them.
+    A 3d coordinate system, like a rigid body, has six degrees of freedom.
 
     Parameters
     ---------
@@ -55,10 +56,10 @@ def irregular_anchors(l, fuzz_percentage = .2):
     #fuzz[A, Z] = 0 # Fixated
     fuzz[B, X] = centered_rand(l*fuzz_percentage*np.cos(np.pi/6))
     fuzz[B, Y] = centered_rand(l*fuzz_percentage*np.sin(np.pi/6))
-    fuzz[B, Z] = -300.*np.random.rand()
+    #fuzz[B, Z] = 0 # Fixated
     fuzz[C, X] = centered_rand(l*fuzz_percentage*np.cos(np.pi/6))
     fuzz[C, Y] = centered_rand(l*fuzz_percentage*np.sin(np.pi/6))
-    fuzz[C, Z] = -300.*np.random.rand()
+    #fuzz[C, Z] = 0 # Fixated
     #fuzz[D, X] = 0 # Fixated
     #fuzz[D, Y] = 0 # Fixated
     fuzz[D, Z] = l*fuzz_percentage*np.random.rand() # usually higher than A is long
