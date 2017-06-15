@@ -10,8 +10,8 @@ Relies heavily on [numpy](https://github.com/numpy/numpy).
 
 Here's the commands I used to get Python libs up and running on my machine running Ubuntu 14.04:
 ```bash
+sudo apt-get install build-essential python-dev python-pip python-tk
 sudo pip install matplotlib
-sudo apt-get install build-essential python-dev
 sudo pip install --upgrade matplotlib
 git clone https://github.com/uqfoundation/mystic.git
 cd mystic
