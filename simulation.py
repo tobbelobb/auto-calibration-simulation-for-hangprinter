@@ -3,8 +3,8 @@
 from __future__ import division # Always want 3/2 = 1.5
 from itertools import product
 import numpy as np
-import matplotlib.pyplot as plt
-import scipy
+#import mystic
+#import scipy
 
 # Axes indexing
 A = 0
@@ -108,14 +108,14 @@ def cost(anchors, pos, samp):
     This is the systems of equations:
     sum for i from 1 to u
       sum for k from a to d
-    |sqrt(sum for s from x to z (A_sk-s_i)^2) - sqrt(sum for s from x to z (A_sk-s_0)^2) - t_ik|
+    |sqrt(sum for s from x to z (A_ks-s_i)^2) - sqrt(sum for s from x to z (A_ks-s_0)^2) - t_ik|
 
     or...
     sum for i from 1 to u
-    |sqrt((A_xa-x_i)^2 + (A_ya-y_i)^2 + (A_za-z_i)^2) - sqrt((A_xa-x_0)^2 + (A_ya-y_0)^2 + (A_za-z_0)^2) - t_ib| +
-    |sqrt((A_xb-x_i)^2 + (A_yb-y_i)^2 + (A_zb-z_i)^2) - sqrt((A_xb-x_0)^2 + (A_yb-y_0)^2 + (A_zb-z_0)^2) - t_ib| +
-    |sqrt((A_xc-x_i)^2 + (A_yc-y_i)^2 + (A_zc-z_i)^2) - sqrt((A_xc-x_0)^2 + (A_yc-y_0)^2 + (A_zc-z_0)^2) - t_ic| +
-    |sqrt((A_xd-x_i)^2 + (A_yd-y_i)^2 + (A_zd-z_i)^2) - sqrt((A_xd-x_0)^2 + (A_yd-y_0)^2 + (A_zd-z_0)^2) - t_id|
+    |sqrt((A_ax-x_i)^2 + (A_ay-y_i)^2 + (A_az-z_i)^2) - sqrt((A_ax-x_0)^2 + (A_ay-y_0)^2 + (A_az-z_0)^2) - t_ib| +
+    |sqrt((A_bx-x_i)^2 + (A_by-y_i)^2 + (A_bz-z_i)^2) - sqrt((A_bx-x_0)^2 + (A_by-y_0)^2 + (A_bz-z_0)^2) - t_ib| +
+    |sqrt((A_cx-x_i)^2 + (A_cy-y_i)^2 + (A_cz-z_i)^2) - sqrt((A_cx-x_0)^2 + (A_cy-y_0)^2 + (A_cz-z_0)^2) - t_ic| +
+    |sqrt((A_dx-x_i)^2 + (A_dy-y_i)^2 + (A_dz-z_i)^2) - sqrt((A_dx-x_0)^2 + (A_dy-y_0)^2 + (A_dz-z_0)^2) - t_id|
 
     Parameters
     ---------
@@ -124,28 +124,132 @@ def cost(anchors, pos, samp):
     samp : ux4 matrix of corresponding samples, starting with [0., 0., 0., 0.]
     """
     return np.sum(np.abs(samples(anchors, pos, fuzz = 0) - samp))
+    #return np.sum((samples(anchors, pos, fuzz = 0) - samp) * (samples(anchors, pos, fuzz = 0) - samp)) # Sum of squares
+
+def anchorsvec2matrix(anchorsvec):
+    """ Create a 4x3 anchors matrix from 6 element anchors vector.
+    """
+    anchors = np.array(np.zeros((4, 3)))
+    anchors[A,Y] = anchorsvec[0];
+    anchors[B,X] = anchorsvec[1];
+    anchors[B,Y] = anchorsvec[2];
+    anchors[C,X] = anchorsvec[3];
+    anchors[C,Y] = anchorsvec[4];
+    anchors[D,Z] = anchorsvec[5];
+    return anchors
+
+def anchorsmatrix2vec(a):
+    return [a[A,Y], a[B, X], a[B,Y], a[C, X], a[C, Y], a[D, Z]]
+
+def posvec2matrix(v, u):
+    return np.reshape(v, (u,3))
+
+def posmatrix2vec(m):
+    return np.reshape(m, np.shape(m)[0]*3)
+
+def solve(samp, cb):
+    """Find reasonable positions and anchors given a set of samples.
+    """
+    u = np.shape(samp)[0]
+    cos30 = np.cos(30*np.pi/180)
+    sin30 = np.sin(30*np.pi/180)
+    number_of_params_pos = 3*u
+    number_of_params_anch = 6
+    anchors_est = symmetric_anchors(1500.0)
+    pos_est = [[0, 0, 500]]*u
+    x_guess = list(anchorsmatrix2vec(anchors_est)) + list(posmatrix2vec(pos_est))
+
+
+    def costx(posvec, anchvec):
+        """Identical to cost, except the shape of inputs and capture of samp and u
+
+        Parameters
+        ----------
+        x : [A_ay A_bx A_by A_cx A_cy A_dz
+               x1   y1   z1   x2   y2   z2   ...  xu   yu   zu
+        """
+        anchors = anchorsvec2matrix(anchvec)
+        pos = np.reshape(posvec, (u,3))
+        return cost(anchors, pos, samp)
+
+    from mystic.termination import ChangeOverGeneration
+    from mystic.solvers import DifferentialEvolutionSolver2
+
+    # Bootstrap to give get x positons to cover some volume
+    NP = 100 # Guessed size of the trial solution population
+    pos_solver = DifferentialEvolutionSolver2(number_of_params_pos, NP)
+    pos_solver.SetInitialPoints(x_guess[6:])
+    pos_solver.SetEvaluationLimits(generations=1500)
+    pos_solver.Solve(lambda x: costx(x, list(anchorsmatrix2vec(anchors_est))), \
+                 termination = ChangeOverGeneration(generations=300, tolerance=2), \
+                 callback = cb)
+    x_guess[6:] = pos_solver.bestSolution
+
+    # Main solver
+    solver = DifferentialEvolutionSolver2(number_of_params_pos+number_of_params_anch, NP)
+    solver.SetInitialPoints(x_guess)
+    solver.SetEvaluationLimits(generations=5000)
+    solver.Solve(lambda x: costx(x[6:], x[0:6]), \
+                 termination = ChangeOverGeneration(generations=300), \
+                 callback = cb)
+
+    return anchorsvec2matrix(solver.bestSolution[0:6])
+
+
 
 # Do basic testing and output results
 # if this is run like a script
 # and not imported like a module or package
 if __name__ == "__main__":
-    l_long = 1500
-    l_short = 150
-    n = 5
-    sample_fuzz = 5
+    l_long = 2000
+    l_short = 1000
+    n = 3
     anchors = irregular_anchors(l_long)
     pos = positions(n, l_short, fuzz = 5)
+    u = np.shape(pos)[0]
+
+    # Plot out real position and anchor
+    import matplotlib.pyplot as plt
+    from mpl_toolkits.mplot3d import Axes3D
+    plt.ion()
+    # Make anchor figure and position figure.
+    # Put the right answers onto those figures
+    fig_anch = plt.figure()
+    fig_pos = plt.figure()
+    ax_anch = fig_anch.add_subplot(111, projection='3d')
+    ax_pos = fig_pos.add_subplot(111, projection='3d')
+    scat_anch0 = ax_anch.scatter(anchors[:,0], anchors[:,1], anchors[:,2], 'ro')
+    scat_pos0 = ax_pos.scatter(pos[:,0], pos[:,1], pos[:,2], 'k+')
+    plt.pause(1)
+    scat_anch = ax_anch.scatter(anchors[:,0], anchors[:,1], anchors[:,2], 'yx')
+    scat_pos = ax_pos.scatter(pos[:,0], pos[:,1], pos[:,2], 'b+')
+
+    iter = 0
+    def replot(x):
+        """Call while pos solver is running.
+        """
+        global iter, u
+        if iter%30 == 0:
+            if len(x) == 6 + 3*u:
+                ps = posvec2matrix(x[6:], u)
+                scat_pos._offsets3d = (ps[:,0], ps[:,1], ps[:,2])
+                anch = anchorsvec2matrix(x[0:6])
+                scat_anch._offsets3d = (anch[:,0], anch[:,1], anch[:,2])
+                print("Anchor errors: ")
+                print(anchorsvec2matrix(x[0:6]) - anchors)
+            elif len(x) == 6:
+                anch = anchorsvec2matrix(x[0:6])
+                scat_anch._offsets3d = (anch[:,0], anch[:,1], anch[:,2])
+            else:
+                ps = posvec2matrix(x, u)
+                scat_pos._offsets3d = (ps[:,0], ps[:,1], ps[:,2])
+            plt.draw()
+            plt.pause(0.1)
+        iter += 1
+
+    sample_fuzz = 0
     samp = samples(anchors, pos, fuzz = sample_fuzz)
-
-    cost = cost(anchors, pos, samp)
-    print("Cost was %f" % cost)
-    eps = 3*(n**3)*sample_fuzz # Linear effect of fuzz seems about right
-    print("eps was %f" % eps)
-    if cost > eps:
-        print("Test fail")
-    else:
-        print("Test success")
-
-# TODO:
-#  * mystic
-
+    solution = solve(samp, replot)
+    print("Anchor errors were: ")
+    print(solution - anchors)
+    print("Cost were: %f" % cost(solution, pos, samp))
