@@ -1,10 +1,11 @@
 """Simulation of Hangprinter auto-calibration
 """
 from __future__ import division # Always want 3/2 = 1.5
-from itertools import product
 import numpy as np
-#import mystic
-#import scipy
+
+# Tips on how to use differential solver:
+# build/lib.linux-x86_64-2.7/mystic/differential_evolution.py
+# http://www.icsi.berkeley.edu/~storn/code.html
 
 # Axes indexing
 A = 0
@@ -77,9 +78,10 @@ def positions(n, l, fuzz=10):
     l : Max length from origo along each axis to sample
     fuzz: How much each measurement point can differ from the regular grid
     """
+    from itertools import product
     pos = np.array(list(product(np.linspace(-l, l, n), repeat = 3))) \
             + 2.*fuzz*(np.random.rand(n**3, 3) - 0.5) \
-            + [0, 0, l]
+            + [0, 0, 1*l]
     index_closest_to_origo = np.int(np.shape(pos)[0]/2)-int(n/2)
     # Make pos[0] a point fairly close to origo
     tmp = pos[0].copy()
@@ -124,7 +126,9 @@ def cost(anchors, pos, samp):
     samp : ux4 matrix of corresponding samples, starting with [0., 0., 0., 0.]
     """
     return np.sum(np.abs(samples(anchors, pos, fuzz = 0) - samp))
-    #return np.sum((samples(anchors, pos, fuzz = 0) - samp) * (samples(anchors, pos, fuzz = 0) - samp)) # Sum of squares
+
+def cost_sq(anchors, pos, samp):
+    return np.sum(pow((samples(anchors, pos, fuzz = 0) - samp), 2)) # Sum of squares
 
 def anchorsvec2matrix(anchorsvec):
     """ Create a 4x3 anchors matrix from 6 element anchors vector.
@@ -147,19 +151,9 @@ def posvec2matrix(v, u):
 def posmatrix2vec(m):
     return np.reshape(m, np.shape(m)[0]*3)
 
-def solve(samp, cb):
+def solve(samp, cb, _cost = cost_sq):
     """Find reasonable positions and anchors given a set of samples.
     """
-    u = np.shape(samp)[0]
-    cos30 = np.cos(30*np.pi/180)
-    sin30 = np.sin(30*np.pi/180)
-    number_of_params_pos = 3*u
-    number_of_params_anch = 6
-    anchors_est = symmetric_anchors(1500.0)
-    pos_est = [[0, 0, 500]]*u
-    x_guess = list(anchorsmatrix2vec(anchors_est)) + list(posmatrix2vec(pos_est))
-
-
     def costx(posvec, anchvec):
         """Identical to cost, except the shape of inputs and capture of samp and u
 
@@ -170,39 +164,137 @@ def solve(samp, cb):
         """
         anchors = anchorsvec2matrix(anchvec)
         pos = np.reshape(posvec, (u,3))
-        return cost(anchors, pos, samp)
+        return _cost(anchors, pos, samp)
+
+    l_anch = 1500.0
+    l_pos = 750
+    l_long = 5000.0
+    l_short = 800.0
+    u = np.shape(samp)[0]
+    cos30 = np.cos(30*np.pi/180)
+    sin30 = np.sin(30*np.pi/180)
+    number_of_params_pos = 3*u
+    number_of_params_anch = 6
+    anchors_est = symmetric_anchors(l_anch)
+    pos_est = np.random.rand(u,3)*l_short - [l_short/2, l_short/2, 0]
+    x_guess = list(anchorsmatrix2vec(anchors_est)) + list(posmatrix2vec(pos_est))
+
+    # Define bounds
+    lb = [      -l_long, # A_ay > -5000.0
+                      0, # A_bx > 0
+                      0, # A_by > 0
+          -l_long*cos30, # A_cx > -5000*cos(30)
+                      0, # A_cy > 0
+                      0, # A_dz > 0
+                  -50.0, # x0   > -50.0
+                  -50.0, # y0   > -50.0
+                    -10, # z0   > -10
+          ] + [-l_short, -l_short, -10]*(u-1)
+    ub = [            0, # A_ay < 0
+           l_long*cos30, # A_bx < 5000.0*cos(30)
+           l_long*sin30, # A_by < 5000.0*sin(30)
+                      0, # A_cx < 0
+           l_long*sin30, # A_cy < 5000.0*sin(30)
+               2*l_long, # A_dz < 10000.0
+                   50.0, # x0   < 50.0
+                   50.0, # y0   < 50.0
+                l_short, # z0   < l_short
+          ] + [l_short, l_short, 2*l_short]*(u-1)
 
     from mystic.termination import ChangeOverGeneration
     from mystic.solvers import DifferentialEvolutionSolver2
 
-    # Bootstrap to give get x positons to cover some volume
-    NP = 100 # Guessed size of the trial solution population
+    # We know that our anchor guess is in the right directions but our
+    # position guesses are still random. This optimization fixes that
+    NP = 60 # Guessed size of the trial solution population
     pos_solver = DifferentialEvolutionSolver2(number_of_params_pos, NP)
+    pos_solver.SetStrictRanges(lb[6:], ub[6:])
     pos_solver.SetInitialPoints(x_guess[6:])
-    pos_solver.SetEvaluationLimits(generations=1500)
+    pos_solver.SetEvaluationLimits(generations=2000)
     pos_solver.Solve(lambda x: costx(x, list(anchorsmatrix2vec(anchors_est))), \
                  termination = ChangeOverGeneration(generations=300, tolerance=2), \
-                 callback = cb)
+                 callback = cb, \
+                 CrossProbability=0.8, ScalingFactor=0.8)
     x_guess[6:] = pos_solver.bestSolution
 
-    # Main solver
+    def explode_points(x, fac, diffZ):
+        new_x = list(x)
+        for i in range(0,6):
+            new_x[i] = new_x[i]*fac
+        for i in range(8, len(x), 3):
+            #new_x[i] = new_x[i] + diffZ
+            new_x[i] = new_x[i]*fac
+        return new_x
+
+    def elevate(x, diffD, diffZ):
+        new_x = list(x)
+        new_x[5] = x[5] + diffD
+        for i in range(8, len(x),3):
+            new_x[i] = x[i] + diffZ
+        return new_x
+
+    # We know that our anchor guesses are along the right directions
+    # but we don't know if their lengths are right. This optimization fixes that.
+    percentage = 1.0
+    while(percentage > 0.0005):
+        solver = DifferentialEvolutionSolver2(number_of_params_pos+number_of_params_anch, NP)
+        solver.SetStrictRanges(lb, ub)
+        solver.SetInitialPoints(x_guess)
+        solver.SetEvaluationLimits(generations=30)
+        solver.Solve(lambda x: costx(x[6:], x[0:6]), \
+                     termination = ChangeOverGeneration(generations=300), \
+                     callback = cb, \
+                     CrossProbability=0.8, ScalingFactor=0.8)
+
+        z_diff = np.abs(x_guess[5] - solver.bestSolution[5])
+        x_low = explode_points(solver.bestSolution, 1.0 - 0.01*percentage, 0)
+        x_high = explode_points(solver.bestSolution, 1.0 + 0.01*percentage, 0)
+        cost_low = costx(x_low[6:], x_low[0:6])
+        cost_high = costx(x_high[6:], x_high[0:6])
+        cost_mid = costx(solver.bestSolution[6:], solver.bestSolution[0:6])
+        print( "cost_low: %f" %      cost_low )
+        print( "cost_high:  %f" %     cost_high)
+        print( "cost_mid: %f" %       cost_mid )
+
+        # Try to set the right radius for the anchors...
+        if (cost_low < 0.999*cost_mid) & (cost_low < cost_high):
+            while((cost_low < 0.999*cost_mid) & (cost_low < cost_high)):
+                x_low = explode_points(x_low, 1.0 - 0.01*percentage, 0)
+                cost_low = costx(x_low[6:], x_low[0:6])
+                print("Imploding and lowering")
+            x_guess = x_low
+        elif (cost_high < 0.999*cost_mid) & (cost_high < cost_low):
+            while((cost_high < 0.999*cost_mid) & (cost_high < cost_low)):
+                x_high = explode_points(x_high, 1.0 + 0.01*percentage, 0)
+                cost_high = costx(x_high[6:], x_high[0:6])
+                print("Exploding and heighering")
+            x_guess = x_high
+        else:
+            x_guess = solver.bestSolution
+            percentage = percentage/2
+            print("Not highering or lowering. z_diff was %f" % z_diff)
+        print("percentage = %f" % percentage)
+
+    # Main optimization that narrows down the leftover fuzz
+    x_guess = solver.bestSolution
+    #NP = 10*(number_of_params_pos+number_of_params_anch) # Guessed size of the trial solution population
+    NP = 80
+    from mystic.strategy import Rand1Bin, Best1Exp, Best1Bin, Rand1Exp
     solver = DifferentialEvolutionSolver2(number_of_params_pos+number_of_params_anch, NP)
+    solver.SetStrictRanges(lb, ub)
     solver.SetInitialPoints(x_guess)
-    solver.SetEvaluationLimits(generations=5000)
+    solver.SetEvaluationLimits(generations=1000000)
     solver.Solve(lambda x: costx(x[6:], x[0:6]), \
                  termination = ChangeOverGeneration(generations=300), \
-                 callback = cb)
+                 callback = cb, \
+                 CrossProbability=0.5, ScalingFactor=0.8, strategy = Best1Bin)
+    x_guess = solver.bestSolution
 
     return anchorsvec2matrix(solver.bestSolution[0:6])
 
-
-
-# Do basic testing and output results
-# if this is run like a script
-# and not imported like a module or package
 if __name__ == "__main__":
-    l_long = 2000
-    l_short = 1000
+    l_long = 2500
+    l_short = 800
     n = 3
     anchors = irregular_anchors(l_long)
     pos = positions(n, l_short, fuzz = 5)
@@ -214,6 +306,7 @@ if __name__ == "__main__":
     plt.ion()
     # Make anchor figure and position figure.
     # Put the right answers onto those figures
+    plt.close("all")
     fig_anch = plt.figure()
     fig_pos = plt.figure()
     ax_anch = fig_anch.add_subplot(111, projection='3d')
@@ -237,6 +330,9 @@ if __name__ == "__main__":
                 scat_anch._offsets3d = (anch[:,0], anch[:,1], anch[:,2])
                 print("Anchor errors: ")
                 print(anchorsvec2matrix(x[0:6]) - anchors)
+                print("cost: %f" % \
+                    cost(anchorsvec2matrix(x[0:6]), np.reshape(x[6:], (u,3)), samp))
+
             elif len(x) == 6:
                 anch = anchorsvec2matrix(x[0:6])
                 scat_anch._offsets3d = (anch[:,0], anch[:,1], anch[:,2])
@@ -244,7 +340,7 @@ if __name__ == "__main__":
                 ps = posvec2matrix(x, u)
                 scat_pos._offsets3d = (ps[:,0], ps[:,1], ps[:,2])
             plt.draw()
-            plt.pause(0.1)
+            plt.pause(0.001)
         iter += 1
 
     sample_fuzz = 0
@@ -252,4 +348,4 @@ if __name__ == "__main__":
     solution = solve(samp, replot)
     print("Anchor errors were: ")
     print(solution - anchors)
-    print("Cost were: %f" % cost(solution, pos, samp))
+    print("Real cost were: %f" % cost(solution, pos, samp))
