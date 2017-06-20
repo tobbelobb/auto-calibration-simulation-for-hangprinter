@@ -176,8 +176,6 @@ def solve(samp, cb, _cost = cost_sq):
     number_of_params_pos = 3*u
     number_of_params_anch = 6
     anchors_est = symmetric_anchors(l_anch)
-    pos_est = np.random.rand(u,3)*l_short - [l_short/2, l_short/2, 0]
-    x_guess = list(anchorsmatrix2vec(anchors_est)) + list(posmatrix2vec(pos_est))
 
     # Define bounds
     lb = [      -l_long, # A_ay > -5000.0
@@ -201,103 +199,37 @@ def solve(samp, cb, _cost = cost_sq):
                 l_short, # z0   < l_short
           ] + [l_short, l_short, 2*l_short]*(u-1)
 
-    from mystic.termination import ChangeOverGeneration
-    from mystic.solvers import DifferentialEvolutionSolver2
+    from mystic.termination import ChangeOverGeneration, NormalizedChangeOverGeneration, VTR
+    from mystic.solvers import DifferentialEvolutionSolver2, PowellDirectionalSolver
 
-    # We know that our anchor guess is in the right directions but our
-    # position guesses are still random. This optimization fixes that
-    NP = 60 # Guessed size of the trial solution population
-    pos_solver = DifferentialEvolutionSolver2(number_of_params_pos, NP)
-    pos_solver.SetStrictRanges(lb[6:], ub[6:])
-    pos_solver.SetInitialPoints(x_guess[6:])
-    pos_solver.SetEvaluationLimits(generations=2000)
-    pos_solver.Solve(lambda x: costx(x, list(anchorsmatrix2vec(anchors_est))), \
-                 termination = ChangeOverGeneration(generations=300, tolerance=2), \
-                 callback = cb, \
-                 CrossProbability=0.8, ScalingFactor=0.8)
-    x_guess[6:] = pos_solver.bestSolution
+    pos_est0 = np.random.rand(u,3)*l_short - [l_short/2, l_short/2, 0]
+    x_guess0 = list(anchorsmatrix2vec(anchors_est)) + list(posmatrix2vec(pos_est0))
 
-    def explode_points(x, fac, diffZ):
-        new_x = list(x)
-        for i in range(0,6):
-            new_x[i] = new_x[i]*fac
-        for i in range(8, len(x), 3):
-            #new_x[i] = new_x[i] + diffZ
-            new_x[i] = new_x[i]*fac
-        return new_x
+    print("Solver 0")
+    solver0 = PowellDirectionalSolver(number_of_params_pos+number_of_params_anch)
+    solver0.SetInitialPoints(x_guess0)
+    solver0.SetStrictRanges(lb, ub)
+    solver0.Solve(lambda x: costx(x[6:], x[0:6]), callback = cb)
+    x_guess0 = solver0.bestSolution
 
-    def elevate(x, diffD, diffZ):
-        new_x = list(x)
-        new_x[5] = x[5] + diffD
-        for i in range(8, len(x),3):
-            new_x[i] = x[i] + diffZ
-        return new_x
+    for i in range(1,20):
+        print("Solver %d" % i)
+        solver0 = PowellDirectionalSolver(number_of_params_pos+number_of_params_anch)
+        solver0.SetInitialPoints(x_guess0)
+        solver0.Solve(lambda x: costx(x[6:], x[0:6]), callback = cb)
+        x_guess0 = solver0.bestSolution
 
-    # We know that our anchor guesses are along the right directions
-    # but we don't know if their lengths are right. This optimization fixes that.
-    percentage = 1.0
-    while(percentage > 0.0005):
-        solver = DifferentialEvolutionSolver2(number_of_params_pos+number_of_params_anch, NP)
-        solver.SetStrictRanges(lb, ub)
-        solver.SetInitialPoints(x_guess)
-        solver.SetEvaluationLimits(generations=30)
-        solver.Solve(lambda x: costx(x[6:], x[0:6]), \
-                     termination = ChangeOverGeneration(generations=300), \
-                     callback = cb, \
-                     CrossProbability=0.8, ScalingFactor=0.8)
+    anch_0 = anchorsvec2matrix(solver0.bestSolution[0:6])
 
-        z_diff = np.abs(x_guess[5] - solver.bestSolution[5])
-        x_low = explode_points(solver.bestSolution, 1.0 - 0.01*percentage, 0)
-        x_high = explode_points(solver.bestSolution, 1.0 + 0.01*percentage, 0)
-        cost_low = costx(x_low[6:], x_low[0:6])
-        cost_high = costx(x_high[6:], x_high[0:6])
-        cost_mid = costx(solver.bestSolution[6:], solver.bestSolution[0:6])
-        print( "cost_low: %f" %      cost_low )
-        print( "cost_high:  %f" %     cost_high)
-        print( "cost_mid: %f" %       cost_mid )
-
-        # Try to set the right radius for the anchors...
-        if (cost_low < 0.999*cost_mid) & (cost_low < cost_high):
-            while((cost_low < 0.999*cost_mid) & (cost_low < cost_high)):
-                x_low = explode_points(x_low, 1.0 - 0.01*percentage, 0)
-                cost_low = costx(x_low[6:], x_low[0:6])
-                print("Imploding and lowering")
-            x_guess = x_low
-        elif (cost_high < 0.999*cost_mid) & (cost_high < cost_low):
-            while((cost_high < 0.999*cost_mid) & (cost_high < cost_low)):
-                x_high = explode_points(x_high, 1.0 + 0.01*percentage, 0)
-                cost_high = costx(x_high[6:], x_high[0:6])
-                print("Exploding and heighering")
-            x_guess = x_high
-        else:
-            x_guess = solver.bestSolution
-            percentage = percentage/2
-            print("Not highering or lowering. z_diff was %f" % z_diff)
-        print("percentage = %f" % percentage)
-
-    # Main optimization that narrows down the leftover fuzz
-    x_guess = solver.bestSolution
-    #NP = 10*(number_of_params_pos+number_of_params_anch) # Guessed size of the trial solution population
-    NP = 80
-    from mystic.strategy import Rand1Bin, Best1Exp, Best1Bin, Rand1Exp
-    solver = DifferentialEvolutionSolver2(number_of_params_pos+number_of_params_anch, NP)
-    solver.SetStrictRanges(lb, ub)
-    solver.SetInitialPoints(x_guess)
-    solver.SetEvaluationLimits(generations=1000000)
-    solver.Solve(lambda x: costx(x[6:], x[0:6]), \
-                 termination = ChangeOverGeneration(generations=300), \
-                 callback = cb, \
-                 CrossProbability=0.5, ScalingFactor=0.8, strategy = Best1Bin)
-    x_guess = solver.bestSolution
-
-    return anchorsvec2matrix(solver.bestSolution[0:6])
+    return anch_0
 
 if __name__ == "__main__":
-    l_long = 2500
-    l_short = 800
-    n = 3
-    anchors = irregular_anchors(l_long)
-    pos = positions(n, l_short, fuzz = 5)
+    l_long = 1500
+    l_short = 400
+    n = 7
+    pos_fuzz = 20
+    anchors = irregular_anchors(l_long, 0.5)
+    pos = positions(n, l_short, fuzz = pos_fuzz)
     u = np.shape(pos)[0]
 
     # Plot out real position and anchor
@@ -343,9 +275,21 @@ if __name__ == "__main__":
             plt.pause(0.001)
         iter += 1
 
-    sample_fuzz = 0
+    sample_fuzz = 2
     samp = samples(anchors, pos, fuzz = sample_fuzz)
     solution = solve(samp, replot)
+    print("Used number of calibration points (mm)")
+    print(n*n*n)
+    print("Movement length along each axis while sampling were ca (mm)")
+    print(l_short)
+    print("With and uncertainty of (mm)")
+    print(pos_fuzz)
+    print("Samples were fuzzed by (mm)")
+    print(sample_fuzz)
+    print("Exact Anchors were: ")
+    print(anchors)
+    print("Output Anchors were: ")
+    print(solution)
     print("Anchor errors were: ")
     print(solution - anchors)
     print("Real cost were: %f" % cost(solution, pos, samp))
