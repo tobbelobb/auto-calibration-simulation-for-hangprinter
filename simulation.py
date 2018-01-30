@@ -259,6 +259,7 @@ if __name__ == "__main__":
                         [-970.0, 550.0, -120.0],
                         [0.0, 0.0, 2865.0]])
 
+# data 1
 #    samp = np.array([
 #[0.00, 0.00, 0.00, 0.00],
 #[126.31  , 5.02    , -0.21   , -213.52],
@@ -277,21 +278,7 @@ if __name__ == "__main__":
 #[897.10  , 913.95  , 702.54  , -1473.05]
 #])
 
-#    samp = np.array([
-#[0.00, 0.00, 0.00, 0.00],
-#[400.53 , 175.53 , 166.10 , -656.90],
-#[229.27 , 511.14 , -48.41 , -554.31],
-#[-41.69 , -62.87 , 306.76 , -225.31],
-#[272.97 , 176.65 , 381.13 , -717.81],
-#[338.07 , 633.70 , 309.27 , -911.22],
-#[504.47 , 658.88 , 48.60 , -794.42],
-#[504.47 , 658.88 , 48.60 , -794.42],
-#[103.50 , 569.98 , 633.68 , -860.25],
-#[229.37 , 7.32 , 411.98 , -575.81],
-#[428.73 , -413.46 , 250.38 , -133.93],
-#[-506.97 , 343.33 , 327.68 , -4.40]
-#        ])
-
+# data 2
     samp = np.array([
 [0.00, 0.00, 0.00, 0.00],
 [400.53 , 175.53 , 166.10 , -656.90],
@@ -304,22 +291,37 @@ if __name__ == "__main__":
 [103.50 , 569.98 , 633.68 , -860.25],
 [229.37 , 7.32 , 411.98 , -575.81],
 [428.73 , -413.46 , 250.38 , -133.93],
-[-506.97 , 343.33 , 327.68 , -4.40],
-[126.31  , 5.02    , -0.21   , -213.52],
-[295.03  , -257.68 , 218.73  , -244.16],
-[511.65  , 94.13   , 116.17  , -585.52],
-[373.57  , 615.00  , -132.03 , -570.93],
-[285.95  , 468.10  , -475.99 , -112.57],
-[411.75  , -471.95 , 279.45  , -61.84],
-[646.11  , 257.49  , 289.34  , -845.42],
-[43.83   , 384.27  , 262.25  , -618.82],
-[-416.94 , 392.71  , 305.03  , -178.76],
-[-355.53 , 308.31  , 408.93  , -267.15],
-[191.34  , 555.78  , 209.78  , -741.28],
-[537.90  , 574.98  , 470.11  , -1102.07],
-[636.51  , 380.17  , 709.07  , -1118.74],
-[897.10  , 913.95  , 702.54  , -1473.05]
+[-506.97 , 343.33 , 327.68 , -4.40]
         ])
+
+#    samp = np.array([
+#[0.00, 0.00, 0.00, 0.00],
+#[400.53 , 175.53 , 166.10 , -656.90],
+#[229.27 , 511.14 , -48.41 , -554.31],
+#[-41.69 , -62.87 , 306.76 , -225.31],
+#[272.97 , 176.65 , 381.13 , -717.81],
+#[338.07 , 633.70 , 309.27 , -911.22],
+#[504.47 , 658.88 , 48.60 , -794.42],
+#[504.47 , 658.88 , 48.60 , -794.42],
+#[103.50 , 569.98 , 633.68 , -860.25],
+#[229.37 , 7.32 , 411.98 , -575.81],
+#[428.73 , -413.46 , 250.38 , -133.93],
+#[-506.97 , 343.33 , 327.68 , -4.40],
+#[126.31  , 5.02    , -0.21   , -213.52],
+#[295.03  , -257.68 , 218.73  , -244.16],
+#[511.65  , 94.13   , 116.17  , -585.52],
+#[373.57  , 615.00  , -132.03 , -570.93],
+#[285.95  , 468.10  , -475.99 , -112.57],
+#[411.75  , -471.95 , 279.45  , -61.84],
+#[646.11  , 257.49  , 289.34  , -845.42],
+#[43.83   , 384.27  , 262.25  , -618.82],
+#[-416.94 , 392.71  , 305.03  , -178.76],
+#[-355.53 , 308.31  , 408.93  , -267.15],
+#[191.34  , 555.78  , 209.78  , -741.28],
+#[537.90  , 574.98  , 470.11  , -1102.07],
+#[636.51  , 380.17  , 709.07  , -1118.74],
+#[897.10  , 913.95  , 702.54  , -1473.05]
+#        ])
 
     u = np.shape(samp)[0]
     pos = np.zeros((u, 3))
@@ -386,37 +388,37 @@ if __name__ == "__main__":
     az = -110.
     bz = -110.
     cz = -110.
-    #for az in np.arange(-115.,-125.1,-5.):
-    #    for bz in np.arange(-115.,-125.1,-5.):
-    #        for cz in np.arange(-115.,-125.1,-5.):
-    #            solution = solve(samp, mute, cost_sq, az, bz, cz)
-    #            sol_anch = anchorsvec2matrix(solution[0:6], az, bz, cz)
-    #            print("Output Anchors were: ")
-    #            print(sol_anch)
-    #            print("Anchor errors were: ")
-    #            print(sol_anch - anchors)
-    #            #print("Positions were: ")
-    #            #print(posvec2matrix(solution[6:], u))
-    #            the_cost = cost_sq(anchorsvec2matrix(solution[0:6], az, bz, cz), np.reshape(solution[6:], (u,3)), samp)
-    #            print("cost: %f" % the_cost)
-    #            if(the_cost < best_cost):
-    #                best_cost = the_cost
-    #                best_az = az
-    #                best_bz = bz
-    #                best_cz = cz
+    for az in np.arange(-105.,-140.1,-5.):
+        for bz in np.arange(-105.,-140.1,-5.):
+            for cz in np.arange(-105.,-140.1,-5.):
+                solution = solve(samp, mute, cost_sq, az, bz, cz)
+                sol_anch = anchorsvec2matrix(solution[0:6], az, bz, cz)
+                print("Output Anchors were: ")
+                print(sol_anch)
+                print("Anchor errors were: ")
+                print(sol_anch - anchors)
+                #print("Positions were: ")
+                #print(posvec2matrix(solution[6:], u))
+                the_cost = cost_sq(anchorsvec2matrix(solution[0:6], az, bz, cz), np.reshape(solution[6:], (u,3)), samp)
+                print("cost: %f" % the_cost)
+                if(the_cost < best_cost):
+                    best_cost = the_cost
+                    best_az = az
+                    best_bz = bz
+                    best_cz = cz
 
-    #            print("Best az: %f\nBest bz: %f\nBest cz: %f\nBest cost: %f" % (best_az, best_bz, best_cz, best_cost))
+                print("Best az: %f\nBest bz: %f\nBest cz: %f\nBest cost: %f" % (best_az, best_bz, best_cz, best_cost))
 
-    solution = solve(samp, mute, cost_sq, az, bz, cz)
-    sol_anch = anchorsvec2matrix(solution[0:6], az, bz, cz)
-    the_cost = cost_sq(anchorsvec2matrix(solution[0:6], az, bz, cz), np.reshape(solution[6:], (u,3)), samp)
-    print("cost found: %f" % the_cost)
-    print("Anchors:")
-    print(anchors)
-    print("Error:")
-    print(sol_anch-anchors)
-    print("Found anchors:")
-    print(sol_anch)
+    #solution = solve(samp, mute, cost_sq, az, bz, cz)
+    #sol_anch = anchorsvec2matrix(solution[0:6], az, bz, cz)
+    #the_cost = cost_sq(anchorsvec2matrix(solution[0:6], az, bz, cz), np.reshape(solution[6:], (u,3)), samp)
+    #print("cost found: %f" % the_cost)
+    #print("Anchors:")
+    #print(anchors)
+    #print("Error:")
+    #print(sol_anch-anchors)
+    #print("Found anchors:")
+    #print(sol_anch)
 
 
 
