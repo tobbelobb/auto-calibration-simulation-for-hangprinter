@@ -114,6 +114,20 @@ def samples_relative_to_origo(anchors, pos, fuzz=1):
     line_lengths = np.linalg.norm(anchors - pos[:,np.newaxis,:], 2, 2)
     return line_lengths - np.linalg.norm(anchors,2,1) + 2.*fuzz*(np.random.rand(np.shape(pos)[0], 1) - 0.5)
 
+def samples_relative_to_origo_no_fuzz(anchors, pos):
+    """Possible relative line length measurments according to anchors and position.
+
+    Parameters
+    ----------
+    anchors : 4x3 matrix of anhcor positions in mm
+    pos : ux3 matrix of positions
+    fuzz: Maximum measurment error per motor in mm
+    """
+    # pos[:,np.newaxis,:]: ux1x3
+    # Broadcasting happens u times and we get ux4x3 output before norm operation
+    line_lengths = np.linalg.norm(anchors - pos[:,np.newaxis,:], 2, 2)
+    return line_lengths - np.linalg.norm(anchors,2,1)
+
 def cost(anchors, pos, samp):
     """If all positions and samples correspond perfectly, this returns 0.
 
@@ -139,7 +153,7 @@ def cost(anchors, pos, samp):
 
 def cost_sq(anchors, pos, samp):
     #pos[0] = [0.0, 0.0, 0.0]
-    return np.sum(pow((samples_relative_to_origo(anchors, pos, fuzz = 0) - samp), 2)) # Sum of squares
+    return np.sum(pow((samples_relative_to_origo_no_fuzz(anchors, pos, fuzz = 0) - samp), 2)) # Sum of squares
 
 def anchorsvec2matrix(anchorsvec, az = 0., bz = 0., cz = 0.):
     """ Create a 4x3 anchors matrix from 6 element anchors vector.
@@ -165,7 +179,7 @@ def posvec2matrix(v, u):
 def posmatrix2vec(m):
     return np.reshape(m, np.shape(m)[0]*3)
 
-def solve(samp, cb, _cost = cost_sq, az = 0., bz = 0., cz = 0.):
+def solve(samp, _cost = cost_sq, az = 0., bz = 0., cz = 0.):
     """Find reasonable positions and anchors given a set of samples.
     """
     def costx(posvec, anchvec):
@@ -197,28 +211,19 @@ def solve(samp, cb, _cost = cost_sq, az = 0., bz = 0., cz = 0.):
           -l_long*cos30, # A_cx > -4000*cos(30)
                       0, # A_cy > 0
                       0, # A_dz > 0
-                   -0.1, # x0   > -0.1
-                   -0.1, # y0   > -0.1
-                   -0.1, # z0   > -0.1
-          ] + [-l_short, -l_short, -10.]*(u-1)
+          ] + [-l_short, -l_short, -10.]*u
     ub = [            0, # A_ay < 0
            l_long*cos30, # A_bx < 4000.0*cos(30)
            l_long*sin30, # A_by < 4000.0*sin(30)
                       0, # A_cx < 0
            l_long*sin30, # A_cy < 4000.0*sin(30)
                  l_long, # A_dz < 4000.0
-                    0.1, # x0   < 0.1
-                    0.1, # y0   < 0.1
-                    0.1, # z0   < 0.1
-          ] + [l_short, l_short, 2*l_short]*(u-1)
+          ] + [l_short, l_short, 2*l_short]*u
 
     from mystic.termination import ChangeOverGeneration, NormalizedChangeOverGeneration, VTR
     from mystic.solvers import DifferentialEvolutionSolver2, PowellDirectionalSolver
 
-    #pos_est0 = np.random.rand(u,3)*l_short - [l_short/2, l_short/2, 0]
-    #pos_est0 = positions(5*5*5, 0, fuzz = 0)
     pos_est0 = np.zeros((u,3))
-    #anchors_est = symmetric_anchors(l_anch, az, bz, cz)
     anchors_est = np.array([[0.0, 0.0, az],
                             [0.0, 0.0, bz],
                             [0.0, 0.0, cz],
@@ -226,7 +231,6 @@ def solve(samp, cb, _cost = cost_sq, az = 0., bz = 0., cz = 0.):
     x_guess0 = list(anchorsmatrix2vec(anchors_est)) + list(posmatrix2vec(pos_est0))
 
     from mystic.termination import Or, CollapseAt, CollapseAs
-    #from mystic.termination import VTRChangeOverGeneration as COG
     from mystic.termination import ChangeOverGeneration as COG
 
     target = 1.0
@@ -239,7 +243,7 @@ def solve(samp, cb, _cost = cost_sq, az = 0., bz = 0., cz = 0.):
 
     solver0.SetInitialPoints(x_guess0)
     solver0.SetStrictRanges(lb, ub)
-    solver0.Solve(lambda x: costx(x[6:], x[0:6]), callback = cb)
+    solver0.Solve(lambda x: costx(x[6:], x[0:6]))
     x_guess0 = solver0.bestSolution
 
     for i in range(1,20):
@@ -247,21 +251,23 @@ def solve(samp, cb, _cost = cost_sq, az = 0., bz = 0., cz = 0.):
         solver0 = PowellDirectionalSolver(number_of_params_pos+number_of_params_anch)
         solver0.SetInitialPoints(x_guess0)
         solver0.SetStrictRanges(lb, ub)
-        solver0.Solve(lambda x: costx(x[6:], x[0:6]), callback = cb)
+        solver0.Solve(lambda x: costx(x[6:], x[0:6]))
         x_guess0 = solver0.bestSolution
 
     return solver0.bestSolution
 
 if __name__ == "__main__":
     # Gotten from manual measuring
-    anchors = np.array([[0.0, -1112.0, -120.0],
-                        [970.0, 550.0, -120.0],
-                        [-970.0, 550.0, -120.0],
+    az = -115.
+    bz = -115.
+    cz = -115.
+    anchors = np.array([[0.0, -1112.0, az],
+                        [970.0, 550.0, bz],
+                        [-970.0, 550.0, cz],
                         [0.0, 0.0, 2865.0]])
 
 # data 1
 #    samp = np.array([
-#[0.00, 0.00, 0.00, 0.00],
 #[126.31  , 5.02    , -0.21   , -213.52],
 #[295.03  , -257.68 , 218.73  , -244.16],
 #[511.65  , 94.13   , 116.17  , -585.52],
@@ -279,23 +285,7 @@ if __name__ == "__main__":
 #])
 
 # data 2
-    samp = np.array([
-[0.00, 0.00, 0.00, 0.00],
-[400.53 , 175.53 , 166.10 , -656.90],
-[229.27 , 511.14 , -48.41 , -554.31],
-[-41.69 , -62.87 , 306.76 , -225.31],
-[272.97 , 176.65 , 381.13 , -717.81],
-[338.07 , 633.70 , 309.27 , -911.22],
-[504.47 , 658.88 , 48.60 , -794.42],
-[504.47 , 658.88 , 48.60 , -794.42],
-[103.50 , 569.98 , 633.68 , -860.25],
-[229.37 , 7.32 , 411.98 , -575.81],
-[428.73 , -413.46 , 250.38 , -133.93],
-[-506.97 , 343.33 , 327.68 , -4.40]
-        ])
-
 #    samp = np.array([
-#[0.00, 0.00, 0.00, 0.00],
 #[400.53 , 175.53 , 166.10 , -656.90],
 #[229.27 , 511.14 , -48.41 , -554.31],
 #[-41.69 , -62.87 , 306.76 , -225.31],
@@ -306,119 +296,46 @@ if __name__ == "__main__":
 #[103.50 , 569.98 , 633.68 , -860.25],
 #[229.37 , 7.32 , 411.98 , -575.81],
 #[428.73 , -413.46 , 250.38 , -133.93],
-#[-506.97 , 343.33 , 327.68 , -4.40],
-#[126.31  , 5.02    , -0.21   , -213.52],
-#[295.03  , -257.68 , 218.73  , -244.16],
-#[511.65  , 94.13   , 116.17  , -585.52],
-#[373.57  , 615.00  , -132.03 , -570.93],
-#[285.95  , 468.10  , -475.99 , -112.57],
-#[411.75  , -471.95 , 279.45  , -61.84],
-#[646.11  , 257.49  , 289.34  , -845.42],
-#[43.83   , 384.27  , 262.25  , -618.82],
-#[-416.94 , 392.71  , 305.03  , -178.76],
-#[-355.53 , 308.31  , 408.93  , -267.15],
-#[191.34  , 555.78  , 209.78  , -741.28],
-#[537.90  , 574.98  , 470.11  , -1102.07],
-#[636.51  , 380.17  , 709.07  , -1118.74],
-#[897.10  , 913.95  , 702.54  , -1473.05]
+#[-506.97 , 343.33 , 327.68 , -4.40]
 #        ])
+
+# data 3
+    samp = np.array([
+[571.85 , -773.44 , 578.54 , 59.12],
+[647.64 , 654.08 , -858.11 , 90.96],
+[-860.99 , 675.57 , 630.82 , 94.65],
+[318.70 , 741.68 , 209.66 , -824.57],
+[754.92 , 466.22 , 418.71 , -1066.04],
+[450.51 , 403.77 , 699.62 , -1046.80],
+[1234.76 , 1174.05 , 1183.26 , -1913.14],
+[283.26 , 162.84 , 182.21 , -603.33],
+[663.00 , -139.32 , 603.13 , -648.02],
+[661.00 , 625.20 , -73.58 , -713.35],
+[-33.50 , 643.97 , 658.06 , -754.40]
+        ])
+
 
     u = np.shape(samp)[0]
     pos = np.zeros((u, 3))
-
-    # Plot out real position and anchor
-    import matplotlib.pyplot as plt
-    from mpl_toolkits.mplot3d import Axes3D
-    plt.ion()
-    # Make anchor figure and position figure.
-    # Put the right answers onto those figures
-    plt.close("all")
-    #fig_anch = plt.figure()
-    #fig_pos = plt.figure()
-    #ax_anch = fig_anch.add_subplot(111, projection='3d')
-    #ax_pos = fig_pos.add_subplot(111, projection='3d')
-    #scat_anch0 = ax_anch.scatter(anchors[:,0], anchors[:,1], anchors[:,2], 'ro')
-    #scat_pos0 = ax_pos.scatter(pos[:,0], pos[:,1], pos[:,2], 'k+')
-    #plt.pause(1)
-    #scat_anch = ax_anch.scatter(anchors[:,0], anchors[:,1], anchors[:,2], 'yx')
-    #scat_pos = ax_pos.scatter(pos[:,0], pos[:,1], pos[:,2], 'b+')
-
-    def mute(x):
-        """A function that does nothing
-        """
-        return
-
-    iter = 0
-    def replot(x):
-        """Call while pos solver is running.
-        """
-        global iter, u
-        if iter%30 == 0:
-            if len(x) == 6 + 3*u:
-                ps = posvec2matrix(x[6:], u)
-                scat_pos._offsets3d = (ps[:,0], ps[:,1], ps[:,2])
-                anch = anchorsvec2matrix(x[0:6])
-                scat_anch._offsets3d = (anch[:,0], anch[:,1], anch[:,2])
-                print("Anchor errors: ")
-                print(anchorsvec2matrix(x[0:6]) - anchors)
-                print("cost: %f" % \
-                    cost_sq(anchorsvec2matrix(x[0:6]), np.reshape(x[6:], (u,3)), samp))
-
-            elif len(x) == 6:
-                anch = anchorsvec2matrix(x[0:6])
-                scat_anch._offsets3d = (anch[:,0], anch[:,1], anch[:,2])
-                print("Anchor errors: ")
-                print(anchorsvec2matrix(x[0:6]) - anchors)
-            else:
-                ps = posvec2matrix(x, u)
-                #scat_pos._offsets3d = (ps[:,0], ps[:,1], ps[:,2])
-            plt.draw()
-            plt.pause(0.001)
-        iter += 1
-
 
     the_cost = 100000.0
     best_cost = 100000.0
     best_az = 1000.0
     best_bz = 1000.0
     best_cz = 1000.0
-    #az = 0.
-    #bz = 0.
-    #cz = 0.
-    az = -110.
-    bz = -110.
-    cz = -110.
-    for az in np.arange(-105.,-140.1,-5.):
-        for bz in np.arange(-105.,-140.1,-5.):
-            for cz in np.arange(-105.,-140.1,-5.):
-                solution = solve(samp, mute, cost_sq, az, bz, cz)
+    for azi in np.arange(az+10.,az-25.1,-5.):
+        for bzi in np.arange(bz+10.,bz-25.1,-5.):
+            for czi in np.arange(cz+10.,cz-25.1,-5.):
+                solution = solve(samp, cost_sq, az, bz, cz)
                 sol_anch = anchorsvec2matrix(solution[0:6], az, bz, cz)
-                print("Output Anchors were: ")
-                print(sol_anch)
-                print("Anchor errors were: ")
-                print(sol_anch - anchors)
-                #print("Positions were: ")
-                #print(posvec2matrix(solution[6:], u))
                 the_cost = cost_sq(anchorsvec2matrix(solution[0:6], az, bz, cz), np.reshape(solution[6:], (u,3)), samp)
-                print("cost: %f" % the_cost)
                 if(the_cost < best_cost):
                     best_cost = the_cost
-                    best_az = az
-                    best_bz = bz
-                    best_cz = cz
-
-                print("Best az: %f\nBest bz: %f\nBest cz: %f\nBest cost: %f" % (best_az, best_bz, best_cz, best_cost))
-
-    #solution = solve(samp, mute, cost_sq, az, bz, cz)
-    #sol_anch = anchorsvec2matrix(solution[0:6], az, bz, cz)
-    #the_cost = cost_sq(anchorsvec2matrix(solution[0:6], az, bz, cz), np.reshape(solution[6:], (u,3)), samp)
-    #print("cost found: %f" % the_cost)
-    #print("Anchors:")
-    #print(anchors)
-    #print("Error:")
-    #print(sol_anch-anchors)
-    #print("Found anchors:")
-    #print(sol_anch)
-
-
-
+                    best_az = azi
+                    best_bz = bzi
+                    best_cz = czi
+                    print("New record cost: %f" % the_cost)
+                    print("Output Anchors: ")
+                    print(sol_anch)
+                    print("Errors: ")
+                    print(sol_anch - anchors)
