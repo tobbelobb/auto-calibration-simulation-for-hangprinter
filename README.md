@@ -54,7 +54,7 @@ As of Jan 31, 2018, this is the procedure (using HangprinterMarlin, not stock Ma
  - Mark reference point for all encoders: `G96 A B C D`
  - Repeat 10 - 20 times:
    - Drag mover to position of data point collection.
-   - Collect data point: `G97 A B C D`
+   - Collect data point: `M114 S1` (in firmware before Feb 6, 2018: `G97 A B C D`)
 
 ## How to Insert Data Points?
 Before you run the simulation, open `simulation.py` and modify the main function.
