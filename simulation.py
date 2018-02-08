@@ -2,6 +2,7 @@
 """
 from __future__ import division # Always want 3/2 = 1.5
 import numpy as np
+import argparse
 
 # Tips on how to use differential solver:
 # build/lib.linux-x86_64-2.7/mystic/differential_evolution.py
@@ -154,10 +155,13 @@ def cost(anchors, pos, samp):
 
 def cost_sq(anchors, pos, samp):
     """
-    (A_ax-x_i)^2 + (A_ay-y_i)^2 + (A_az-z_i)^2 - (A_ax^2 + A_ay^2 + A_az^2) - t_ia +
-    (A_bx-x_i)^2 + (A_by-y_i)^2 + (A_bz-z_i)^2 - (A_bx^2 + A_by^2 + A_bz^2) - t_ib +
-    (A_cx-x_i)^2 + (A_cy-y_i)^2 + (A_cz-z_i)^2 - (A_cx^2 + A_cy^2 + A_cz^2) - t_ic +
-    (A_dx-x_i)^2 + (A_dy-y_i)^2 + (A_dz-z_i)^2 - (A_dx^2 + A_dy^2 + A_dz^2) - t_id
+    For all samples sum
+    (Sample value if anchor position A and cartesian position x were guessed   - actual sample)^2
+
+    (sqrt((A_ax-x_i)^2 + (A_ay-y_i)^2 + (A_az-z_i)^2) - sqrt(A_ax^2 + A_ay^2 + A_az^2) - t_ia)^2 +
+    (sqrt((A_bx-x_i)^2 + (A_by-y_i)^2 + (A_bz-z_i)^2) - sqrt(A_bx^2 + A_by^2 + A_bz^2) - t_ib)^2 +
+    (sqrt((A_cx-x_i)^2 + (A_cy-y_i)^2 + (A_cz-z_i)^2) - sqrt(A_cx^2 + A_cy^2 + A_cz^2) - t_ic)^2 +
+    (sqrt((A_dx-x_i)^2 + (A_dy-y_i)^2 + (A_dz-z_i)^2) - sqrt(A_dx^2 + A_dy^2 + A_dz^2) - t_id)^2
     """
     return np.sum(pow((samples_relative_to_origo_no_fuzz(anchors, pos) - samp), 2)) # Sum of squares
 
@@ -275,17 +279,40 @@ def solve(samp, _cost = cost_sq):
 
     return solver0.bestSolution
 
+def print_anch(anch):
+    print("\n#define ANCHOR_A_Y %5d" % round(anch[A,Y]))
+    print("#define ANCHOR_A_Z %5d"   % round(anch[A,Z]))
+    print("#define ANCHOR_B_X %5d"   % round(anch[B,X]))
+    print("#define ANCHOR_B_Y %5d"   % round(anch[B,Y]))
+    print("#define ANCHOR_B_Z %5d"   % round(anch[B,Z]))
+    print("#define ANCHOR_C_X %5d"   % round(anch[C,X]))
+    print("#define ANCHOR_C_Y %5d"   % round(anch[C,Y]))
+    print("#define ANCHOR_C_Z %5d"   % round(anch[C,Z]))
+    print("#define ANCHOR_D_Z %5d"   % round(anch[D,Z]))
+    print("\nM665 W%.2f E%.2f R%.2f T%.2f Y%.2f U%.2f I%.2f O%.2f P%.2f" % (anch[A,Y],anch[A,Z],anch[B,X],anch[B,Y],anch[B,Z],anch[C,X],anch[C,Y],anch[C,Z],anch[D,Z]))
+
+def print_anch_err(sol_anch, anchors):
+    print("\nErr_A_Y: %9.3f" % (sol_anch[A,Y] - anchors[A,Y]))
+    print("Err_A_Z: %9.3f" % (sol_anch[A,Z] - anchors[A,Z]))
+    print("Err_B_X: %9.3f" % (sol_anch[B,X] - anchors[B,X]))
+    print("Err_B_Y: %9.3f" % (sol_anch[B,Y] - anchors[B,Y]))
+    print("Err_B_Z: %9.3f" % (sol_anch[B,Z] - anchors[B,Z]))
+    print("Err_C_X: %9.3f" % (sol_anch[C,X] - anchors[C,X]))
+    print("Err_C_Y: %9.3f" % (sol_anch[C,Y] - anchors[C,Y]))
+    print("Err_C_Z: %9.3f" % (sol_anch[C,Z] - anchors[C,Z]))
+    print("Err_D_Z: %9.3f" % (sol_anch[D,Z] - anchors[D,Z]))
+
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Figure out where Hangprinter anchors are by looking at line difference samples.')
+    parser.add_argument('-d', '--debug', help='Print debug information', action='store_true')
+    args = vars(parser.parse_args())
+
     # Rough approximations from manual measuring.
     # Does not affect optimization result. Only used for manual sanity check.
-    az = -115.
-    bz = -115.
-    cz = -115.
-    anchors = np.array([[   0.0, -1112.0,     az],
-                        [ 970.0,   550.0,     bz],
-                        [-970.0,   550.0,     cz],
+    anchors = np.array([[   0.0, -1112.0,  -115.],
+                        [ 970.0,   550.0,  -115.],
+                        [-970.0,   550.0,  -115.],
                         [   0.0,     0.0, 2865.0]])
-
     # Replace this with your collected data
     samp = np.array([
 [400.53 , 175.53 , 166.10 , -656.90],
@@ -307,8 +334,10 @@ if __name__ == "__main__":
     solution = solve(samp, cost_sq)
     sol_anch = anchorsvec2matrix(solution[0:params_anch])
     the_cost = cost_sq(anchorsvec2matrix(solution[0:params_anch]), np.reshape(solution[params_anch:], (u,3)), samp)
-    print("cost: %f" % the_cost)
-    print("Output Anchors: ")
-    print(sol_anch)
-    print("Errors: ")
-    print(sol_anch - anchors)
+    print("samples:         %d" % u)
+    print("total cost:      %f" % the_cost)
+    print("cost per sample: %f" % (the_cost/u))
+    print_anch(sol_anch)
+    if (args['debug']):
+        print_anch_err(sol_anch, anchors)
+
