@@ -1,9 +1,9 @@
 # Auto Calibration Simulation for Hangprinter
-Hangprinter is a parallel line driven RepRap with four translational degrees of freedom.
+Hangprinter is a parallel line driven RepRap 3D Printer.
 It's repo is [here](https://github.com/tobbelobb/hangprinter).
 
 The Hangprinter Project has a goal of auto-calibration.
-That requires locating anchor points by sampling relative line lengths with tight lines at unknown positions, starting from an unknown position.
+That requires locating anchor points by sampling relative line lengths with tight lines at unknown positions.
 This code tries to optimize the anchor positions to fit the samples of relative line lengths.
 
 Note that this code assumes that the B-anchor has a positive x-coordinate.
@@ -29,7 +29,7 @@ Once dependencies and data are in place, the simulation runs with
 python ./simulation.py
 ```
 
-If it works, then your output looks similar to
+If it works (should finish in a few seconds/minutes), then your output looks similar to
 ```
 samples:         11
 total cost:      0.254896
@@ -61,7 +61,7 @@ As of Jan 31, 2018, this is the procedure:
    - Collect data point: `M114 S1` (Old firmwares, before Feb 6, 2018 used: `G97 A B C D`)
 
 ## How to Insert Data Points?
-Before you run the simulation, open `simulation.py` and modify the main function.
+Before you run the simulation, open `simulation.py` and modify the main function, near the bottom of the file.
 Replace `??` with data points collected with your Hangprinter.
 ```python
     ...
@@ -78,7 +78,7 @@ python ./simulation.py
 ```
 
 ## Output Explanation
-The first block give some stats trying to describe the quality of the output parameters
+The first block give some stats trying to describe the quality of the parameters that were found
 ```
 samples:         11
 total cost:      0.254896
@@ -87,7 +87,7 @@ cost per sample: 0.023172
 It's recommended to use 12 samples or more.
 Using fewer samples makes it probable that the solver finds bogus anchor positions that still minimizes cost.
 
-Ideal data points collected on an ideal machine would give `total cost: 0.000000` for any sample size.
+Ideal data points collected on an ideal machine would give `total cost: 0.000000` for any sample size above 10.
 In real life this does not happen.
 The `cost per sample` value let you compare results from your different data sets of unequal size.
 
@@ -110,12 +110,12 @@ The gcode line that is the third block can be used to set anchor calibration val
 M665 W-1164.31 E-143.53 R998.78 T585.33 Y-114.98 U-977.11 I518.88 O-105.60 P2874.87
 ```
 If you have `EEPROM_SETTINGS` enabled you can save these values with `M500`.
-If you don't save them they will be reset when you restart your machine.
+If you don't save them they will be forgotten when you power down your machine.
 
 
 ## Debug
 The script accepts a `-d` or `--debug` flag.
-It calculates the difference between your manually measured anchor positions, and the anchor positions calculated by the script:
+It calculates the difference between the output anchor positions and your manually measured ones:
 ```
 Err_A_Y:   -52.307
 Err_A_Z:   -28.532
@@ -132,8 +132,10 @@ For these values to be meaningful you must have inserted your manually measured 
 ```python
     # Rough approximations from manual measuring.
     # Does not affect optimization result. Only used for manual sanity check.
-    anchors = np.array([[   0.0,     ay?,     az?],
-                        [   bx?,     by?,     bz?],
-                        [   cx?,     cy?,     cz?],
-                        [   0.0,     0.0,     dz?]])
+    anchors = np.array([[  0.0,  ?ay?,  ?az?],
+                        [ ?bx?,  ?by?,  ?bz?],
+                        [ ?cx?,  ?cy?,  ?cz?],
+                        [  0.0,   0.0,  ?dz?]])
 ```
+The debug check is only relevant if you suspect that the script outputs bogus values.
+Error larger than ca 100 mm is generally a sign that something's up.
