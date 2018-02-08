@@ -10,18 +10,13 @@ Note that this code assumes that the B-anchor has a positive x-coordinate.
 If your machine's B-anchor is negative then your output anchors Bx and Cx will have the wrong signs.
 
 ## Dependencies
-It uses [mystic](https://github.com/uqfoundation/mystic) for the non-convex optimization algorithms.
 Relies heavily on [numpy](https://github.com/numpy/numpy).
+It uses either [scipy](https://scipy.org/) or [mystic](https://github.com/uqfoundation/mystic) for the optimization algorithms.
 
-Here's the commands I used to get Python libs up and running on my machine running Ubuntu 14.04:
+
+Here's the commands I used to get Python2.7 libs up and running on my machine running Ubuntu 14.04:
 ```bash
-sudo apt-get install build-essential python-dev python-pip python-tk
-sudo pip install matplotlib
-sudo pip install --upgrade matplotlib
-git clone https://github.com/uqfoundation/mystic.git
-cd mystic
-python setup.py build
-sudo python setup.py install
+sudo apt-get install build-essential python-dev python-pip python-tk python-scipy python-numpy
 ```
 
 Once dependencies and data are in place, the simulation runs with
@@ -126,9 +121,11 @@ Err_C_X:    -7.113
 Err_C_Y:   -31.124
 Err_C_Z:     9.399
 Err_D_Z:     9.869
+Method: L-BFGS-B
+RUN TIME : 1.43998289108
 ```
 
-For these values to be meaningful you must have inserted your manually measured values into the `anchors` array in the script:
+For the `Err_ABCD_XYZ`-values to be meaningful you must have inserted your manually measured values into the `anchors` array in the script:
 ```python
     # Rough approximations from manual measuring.
     # Does not affect optimization result. Only used for manual sanity check.
@@ -139,3 +136,20 @@ For these values to be meaningful you must have inserted your manually measured 
 ```
 The debug check is only relevant if you suspect that the script outputs bogus values.
 Error larger than ca 100 mm is generally a sign that something's up.
+
+## Alternative Optimization Algorithms
+The script accepts a `-m` or `--method` argument.
+Try for example
+```bash
+python simulation.py --method SLSQP
+```
+... for a method that is faster, but requires more data points than the default `L-BFGS-B` method.
+
+If you want to use the `PowellDirectionalSolver`, you also need Mystic:
+```
+git clone https://github.com/uqfoundation/mystic.git
+cd mystic
+python setup.py build
+sudo python setup.py install
+```
+

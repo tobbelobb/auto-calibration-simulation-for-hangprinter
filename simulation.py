@@ -2,11 +2,10 @@
 """
 from __future__ import division # Always want 3/2 = 1.5
 import numpy as np
+import scipy.optimize
 import argparse
-
-# Tips on how to use differential solver:
-# build/lib.linux-x86_64-2.7/mystic/differential_evolution.py
-# http://www.icsi.berkeley.edu/~storn/code.html
+import timeit
+import sys
 
 # Axes indexing
 A = 0
@@ -151,7 +150,7 @@ def cost(anchors, pos, samp):
     pos: ux3 matrix of positions
     samp : ux4 matrix of corresponding samples, starting with [0., 0., 0., 0.]
     """
-    return np.sum(np.abs(samples(anchors, pos, fuzz = 0) - samp))
+    return np.sum(np.abs(samples_relative_to_origo_no_fuzz(anchors, pos) - samp))
 
 def cost_sq(anchors, pos, samp):
     """
@@ -189,7 +188,7 @@ def posvec2matrix(v, u):
 def posmatrix2vec(m):
     return np.reshape(m, np.shape(m)[0]*3)
 
-def solve(samp, _cost = cost_sq):
+def solve(samp, _cost, method):
     """Find reasonable positions and anchors given a set of samples.
     """
     def costx(posvec, anchvec):
@@ -207,8 +206,7 @@ def solve(samp, _cost = cost_sq):
     u = np.shape(samp)[0]
     number_of_params_pos = 3*u
 
-
-    l_long = 4000.0
+    l_long = 5000.0
     l_short = 1700.0
     data_z_min = -20.0
     # Limits of anchor positions:
@@ -243,9 +241,6 @@ def solve(samp, _cost = cost_sq):
                  l_long, # A_dz < 4000.0
           ] + [l_short, l_short, 2*l_short]*u
 
-    from mystic.termination import ChangeOverGeneration, NormalizedChangeOverGeneration, VTR
-    from mystic.solvers import DifferentialEvolutionSolver2, PowellDirectionalSolver
-
     pos_est0 = np.zeros((u,3))
     anchors_est = np.array([[0.0, 0.0, 0.0],
                             [0.0, 0.0, 0.0],
@@ -253,31 +248,43 @@ def solve(samp, _cost = cost_sq):
                             [0.0, 0.0, 0.0]])
     x_guess0 = list(anchorsmatrix2vec(anchors_est)) + list(posmatrix2vec(pos_est0))
 
-    from mystic.termination import Or, CollapseAt, CollapseAs
-    from mystic.termination import ChangeOverGeneration as COG
-
-    target = 1.0
-    term = Or((COG(generations=100), CollapseAt(target, generations=100)))
-
-    # Solver 0
-    solver0 = PowellDirectionalSolver(number_of_params_pos+params_anch)
-    solver0.SetEvaluationLimits(evaluations=3200000, generations=10000)
-    solver0.SetTermination(term)
-
-    solver0.SetInitialPoints(x_guess0)
-    solver0.SetStrictRanges(lb, ub)
-    solver0.Solve(lambda x: costx(x[params_anch:], x[0:params_anch]))
-    x_guess0 = solver0.bestSolution
-
-    # PowellDirectional sometimes finds new ways if kickstarted anew
-    for i in range(1,20):
+    if(method == 'PowellDirectionalSolver'):
+        from mystic.termination import ChangeOverGeneration, NormalizedChangeOverGeneration, VTR
+        from mystic.solvers import PowellDirectionalSolver
+        from mystic.termination import Or, CollapseAt, CollapseAs
+        from mystic.termination import ChangeOverGeneration as COG
+        target = 1.0
+        term = Or((COG(generations=100), CollapseAt(target, generations=100)))
+        # Solver 0
         solver0 = PowellDirectionalSolver(number_of_params_pos+params_anch)
+        solver0.SetEvaluationLimits(evaluations=3200000, generations=10000)
+        solver0.SetTermination(term)
         solver0.SetInitialPoints(x_guess0)
         solver0.SetStrictRanges(lb, ub)
         solver0.Solve(lambda x: costx(x[params_anch:], x[0:params_anch]))
         x_guess0 = solver0.bestSolution
+        # PowellDirectional sometimes finds new ways if kickstarted anew
+        for i in range(1,20):
+            solver0 = PowellDirectionalSolver(number_of_params_pos+params_anch)
+            solver0.SetInitialPoints(x_guess0)
+            solver0.SetStrictRanges(lb, ub)
+            solver0.Solve(lambda x: costx(x[params_anch:], x[0:params_anch]))
+            x_guess0 = solver0.bestSolution
+        return x_guess0
+    elif(method == 'SLSQP'):
+        # 'SLSQP' is crazy fast and lands on 0.0000 error
+        x_guess0 = scipy.optimize.minimize(lambda x: costx(x[params_anch:], x[0:params_anch]), x_guess0, method=method, bounds=zip(lb,ub),
+                options={'disp':True,'ftol':1e-20, 'maxiter':150000})
+        return x_guess0.x
+    elif(method == 'L-BFGS-B'):
+        ## 'L-BFGS-B' Is crazy fast but doesn't quite land at 0.0000 error
+        x_guess0 = scipy.optimize.minimize(lambda x: costx(x[params_anch:], x[0:params_anch]), x_guess0, method=method, bounds=zip(lb,ub),
+                options={'ftol':1e-12, 'maxiter':150000})
+        return x_guess0.x
+    else:
+        print("Method %s is not supported!" % method)
+        sys.exit(1)
 
-    return solver0.bestSolution
 
 def print_anch(anch):
     print("\n#define ANCHOR_A_Y %5d" % round(anch[A,Y]))
@@ -305,6 +312,8 @@ def print_anch_err(sol_anch, anchors):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Figure out where Hangprinter anchors are by looking at line difference samples.')
     parser.add_argument('-d', '--debug', help='Print debug information', action='store_true')
+    parser.add_argument('-m', '--method', help='Available methods are L-BFGS-B (default), PowellDirectionalSolver (requires a library called Mystic), and SLSQP',
+                       default='L-BFGS-B')
     args = vars(parser.parse_args())
 
     # Rough approximations from manual measuring.
@@ -313,7 +322,8 @@ if __name__ == "__main__":
                         [ 970.0,   550.0,  -115.],
                         [-970.0,   550.0,  -115.],
                         [   0.0,     0.0, 2865.0]])
-    # Replace this with your collected data
+
+#    # Replace this with your collected data
     samp = np.array([
 [400.53 , 175.53 , 166.10 , -656.90],
 [229.27 , 511.14 , -48.41 , -554.31],
@@ -329,9 +339,9 @@ if __name__ == "__main__":
         ])
 
     u = np.shape(samp)[0]
-    pos = np.zeros((u, 3))
-
-    solution = solve(samp, cost_sq)
+    st1 = timeit.default_timer()
+    solution = solve(samp, cost_sq, args['method'])
+    st2 = timeit.default_timer()
     sol_anch = anchorsvec2matrix(solution[0:params_anch])
     the_cost = cost_sq(anchorsvec2matrix(solution[0:params_anch]), np.reshape(solution[params_anch:], (u,3)), samp)
     print("samples:         %d" % u)
@@ -340,4 +350,5 @@ if __name__ == "__main__":
     print_anch(sol_anch)
     if (args['debug']):
         print_anch_err(sol_anch, anchors)
-
+        print("Method: %s" % args['method'])
+        print("RUN TIME : {0}".format(st2-st1))
