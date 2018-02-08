@@ -129,10 +129,10 @@ For the `Err_ABCD_XYZ`-values to be meaningful you must have inserted your manua
 ```python
     # Rough approximations from manual measuring.
     # Does not affect optimization result. Only used for manual sanity check.
-    anchors = np.array([[  0.0,  ?ay?,  ?az?],
-                        [ ?bx?,  ?by?,  ?bz?],
-                        [ ?cx?,  ?cy?,  ?cz?],
-                        [  0.0,   0.0,  ?dz?]])
+    anchors = np.array([[  0.0,   ay?,   az?],
+                        [  bx?,   by?,   bz?],
+                        [  cx?,   cy?,   cz?],
+                        [  0.0,   0.0,   dz?]])
 ```
 The debug check is only relevant if you suspect that the script outputs bogus values.
 Error larger than ca 100 mm is generally a sign that something's up.
@@ -141,9 +141,9 @@ Error larger than ca 100 mm is generally a sign that something's up.
 The script accepts a `-m` or `--method` argument.
 Try for example
 ```bash
-python simulation.py --method SLSQP
+python ./simulation.py --method SLSQP -d
 ```
-... for a method that is faster, but requires more data points than the default `L-BFGS-B` method.
+... for the [`SLSQP`](https://en.wikipedia.org/wiki/Sequential_quadratic_programming) method that is faster, but requires more data points than the default [`L-BFGS-B`](https://en.wikipedia.org/wiki/Limited-memory_BFGS) method.
 
 If you want to use the `PowellDirectionalSolver`, you also need Mystic:
 ```
