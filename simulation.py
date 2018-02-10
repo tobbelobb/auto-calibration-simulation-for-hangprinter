@@ -360,8 +360,11 @@ if __name__ == "__main__":
     print("samples:         %d" % u)
     print("total cost:      %f" % the_cost)
     print("cost per sample: %f" % (the_cost/u))
+    if(u < 13):
+        print("\nWarning: Sample count below 13 detected.\n         Do not trust the below values.\n         Collect more samples.")
     print_anch(sol_anch)
     if (args['debug']):
         print_anch_err(sol_anch, anchors)
         print("Method: %s" % args['method'])
         print("RUN TIME : {0}".format(st2-st1))
+

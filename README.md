@@ -27,8 +27,12 @@ python ./simulation.py
 If it works (should finish in a few seconds/minutes), then your output looks similar to
 ```
 samples:         11
-total cost:      0.254896
-cost per sample: 0.023172
+total cost:      0.254898
+cost per sample: 0.023173
+
+Warning: Sample count below 13 detected.
+         Do not trust the below values.
+         Collect more samples.
 
 #define ANCHOR_A_Y -1164
 #define ANCHOR_A_Z  -144
@@ -40,7 +44,7 @@ cost per sample: 0.023172
 #define ANCHOR_C_Z  -106
 #define ANCHOR_D_Z  2875
 
-M665 W-1164.31 E-143.53 R998.78 T585.33 Y-114.98 U-977.11 I518.88 O-105.60 P2874.87
+M665 W-1164.26 E-143.50 R998.88 T585.38 Y-115.04 U-977.06 I518.88 O-105.57 P2874.93
 ```
 Note that these values are only test data and does not correspond to your Hangprinter setup (yet).
 
@@ -51,7 +55,7 @@ As of Jan 31, 2018, this is the procedure:
    Adjust torque magnitude as you prefer.
  - Drag mover to the origin and zero counters: `G92 X0 Y0 Z0`
  - Mark reference point for all encoders: `G96 A B C D` (Stock Marlin accepts `G96` as a short hand for `G96 A B C D`)
- - Repeat 12 - ca 20 times:
+ - Repeat 13 - ca 20 times:
    - Drag mover to position of data point collection.
    - Collect data point: `M114 S1` (Old firmwares, before Feb 6, 2018 used: `G97 A B C D`)
 
@@ -79,7 +83,7 @@ samples:         11
 total cost:      0.254896
 cost per sample: 0.023172
 ```
-It's recommended to use 12 samples or more.
+It's recommended to use 13 samples or more.
 Using fewer samples makes it probable that the solver finds bogus anchor positions that still minimizes cost.
 
 Ideal data points collected on an ideal machine would give `total cost: 0.000000` for any sample size above 10.
