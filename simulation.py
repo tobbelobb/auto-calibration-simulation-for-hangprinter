@@ -16,6 +16,8 @@ X = 0
 Y = 1
 Z = 2
 params_anch = 9
+A_bx = 2
+A_cx = 5
 
 def symmetric_anchors(l, az=-120., bz=-120., cz=-120.):
     anchors = np.array(np.zeros((4, 3)))
@@ -188,7 +190,7 @@ def posvec2matrix(v, u):
 def posmatrix2vec(m):
     return np.reshape(m, np.shape(m)[0]*3)
 
-def solve(samp, _cost, method):
+def solve(samp, _cost, method, cx_is_positive=False):
     """Find reasonable positions and anchors given a set of samples.
     """
     def costx(posvec, anchvec):
@@ -240,6 +242,16 @@ def solve(samp, _cost, method):
                 l_short, # A_cz < 1700
                  l_long, # A_dz < 4000.0
           ] + [l_short, l_short, 2*l_short]*u
+
+    # It would work to just swap the signs of bx and cx after the optimization
+    # But there are fewer assumptions involved in setting correct bounds from the start instead
+    if(cx_is_positive):
+        tmp = lb[A_bx]
+        lb[A_bx] = lb[A_cx]
+        lb[A_cx] = tmp
+        tmp = ub[A_bx]
+        ub[A_bx] = ub[A_cx]
+        ub[A_cx] = tmp
 
     pos_est0 = np.zeros((u,3))
     anchors_est = np.array([[0.0, 0.0, 0.0],
@@ -312,6 +324,7 @@ def print_anch_err(sol_anch, anchors):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Figure out where Hangprinter anchors are by looking at line difference samples.')
     parser.add_argument('-d', '--debug', help='Print debug information', action='store_true')
+    parser.add_argument('-c', '--cx_is_positive', help='Use this flag if your C anchor should have a positive X-coordinate', action='store_true')
     parser.add_argument('-m', '--method', help='Available methods are L-BFGS-B (default), PowellDirectionalSolver (requires a library called Mystic), and SLSQP',
                        default='L-BFGS-B')
     args = vars(parser.parse_args())
@@ -340,7 +353,7 @@ if __name__ == "__main__":
 
     u = np.shape(samp)[0]
     st1 = timeit.default_timer()
-    solution = solve(samp, cost_sq, args['method'])
+    solution = solve(samp, cost_sq, args['method'], args['cx_is_positive'])
     st2 = timeit.default_timer()
     sol_anch = anchorsvec2matrix(solution[0:params_anch])
     the_cost = cost_sq(anchorsvec2matrix(solution[0:params_anch]), np.reshape(solution[params_anch:], (u,3)), samp)
