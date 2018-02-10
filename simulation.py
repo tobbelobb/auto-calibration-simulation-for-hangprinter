@@ -324,6 +324,9 @@ def print_anch_err(sol_anch, anchors):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Figure out where Hangprinter anchors are by looking at line difference samples.')
     parser.add_argument('-d', '--debug', help='Print debug information', action='store_true')
+    parser.add_argument('-a', '--auto_collect_samples', help='Have the script send gcode commands and parse sample output to get the data it needs. Requires Printrun.', action='store_true')
+    parser.add_argument('-p', '--port', help='Serial port that your printer is connected to.', default='/dev/ttyUSB0')
+    parser.add_argument('-b', '--baud', help='Baudrate of your printer.', type=int, default=250000)
     parser.add_argument('-c', '--cx_is_positive', help='Use this flag if your C anchor should have a positive X-coordinate', action='store_true')
     parser.add_argument('-m', '--method', help='Available methods are L-BFGS-B (default), PowellDirectionalSolver (requires a library called Mystic), and SLSQP',
                        default='L-BFGS-B')
@@ -336,20 +339,86 @@ if __name__ == "__main__":
                         [-970.0,   550.0,  -115.],
                         [   0.0,     0.0, 2865.0]])
 
-#    # Replace this with your collected data
-    samp = np.array([
-[400.53 , 175.53 , 166.10 , -656.90],
-[229.27 , 511.14 , -48.41 , -554.31],
-[-41.69 , -62.87 , 306.76 , -225.31],
-[272.97 , 176.65 , 381.13 , -717.81],
-[338.07 , 633.70 , 309.27 , -911.22],
-[504.47 , 658.88 , 48.60 , -794.42],
-[504.47 , 658.88 , 48.60 , -794.42],
-[103.50 , 569.98 , 633.68 , -860.25],
-[229.37 , 7.32 , 411.98 , -575.81],
-[428.73 , -413.46 , 250.38 , -133.93],
-[-506.97 , 343.33 , 327.68 , -4.40]
-        ])
+
+    # TODO: auto-detect port
+    if(args['auto_collect_samples']):
+
+        from printrun.printcore import printcore
+        from printrun import gcoder
+        import re
+        baud = args['baud']
+        port = args['port']
+
+        # TODO: make regexp and test it
+        M114_S1_response_exp = re.compile("\[\(\f\), \(\f\), \(\f\), \(\f\)\],") # Detect array-like string?
+
+        # TODO: auto-find the right port
+        class serial_to_printer(cmd.Cmd):
+            # Selected parts of pronsole
+            def scanserial(self):
+                """scan for available ports. return a list of device names."""
+                baselist = []
+                if os.name == "nt":
+                    try:
+                        key = _winreg.OpenKey(_winreg.HKEY_LOCAL_MACHINE, "HARDWARE\\DEVICEMAP\\SERIALCOMM")
+                        i = 0
+                        while(1):
+                            baselist += [_winreg.EnumValue(key, i)[1]]
+                            i += 1
+                    except:
+                        pass
+                for g in ['/dev/ttyUSB*', '/dev/ttyACM*', "/dev/tty.*", "/dev/cu.*", "/dev/rfcomm*"]:
+                    baselist += glob.glob(g)
+                return filter(self._bluetoothSerialFilter, baselist)
+
+            def _bluetoothSerialFilter(self, serial):
+                return not ("Bluetooth" in serial or "FireFly" in serial)
+
+        p=printcore(port,baud) # or p.printcore('COM3',115200) on Windows
+        p.send_now("G95 A40 B40 C40 D30") # Set torque mode all axes
+        p.send_now("G4 P1000")            # Wait for 1 second
+        try:
+            input("Drag your printer to the origin, hold it down if necessary, and press Return...")
+        except SyntaxError:
+            pass
+        p.send_now("G92 X0 Y0 Z0") # We're at home
+        try:
+            input("Let your mover go and press Return...")
+        except SyntaxError:
+            pass
+        p.send_now("G95 A5 B5 C5 D0") # D in pos mode, others weak
+        p.send_now("G6 S2 D-50") # Drag in some D-line
+        p.send_now("G95 A15 B15 C15") # Tighten ABC slowly
+        p.send_now("G4 P100")
+        p.send_now("G95 A20 B20 C20")
+        p.send_now("G4 P100")
+        p.send_now("G95 A25 B25 C25")
+        p.send_now("G4 P100")
+        p.send_now("G95 A30 B30 C30")
+        p.send_now("G4 P100")
+        p.send_now("G95 A35 B35 C35")
+        p.send_now("G4 P100")
+        p.send_now("G95 A40 B40 C40")
+        p.send_now("G4 P1000")
+        p.send_now("M114 S1") # Ask for data point
+
+        p.disconnect() # this is how you disconnect from the printer once you are done. This will also stop running prints.
+
+    else:
+        # Replace this with your collected data
+        samp = np.array([
+            [400.53 , 175.53 , 166.10 , -656.90],
+            [229.27 , 511.14 , -48.41 , -554.31],
+            [-41.69 , -62.87 , 306.76 , -225.31],
+            [272.97 , 176.65 , 381.13 , -717.81],
+            [338.07 , 633.70 , 309.27 , -911.22],
+            [504.47 , 658.88 , 48.60 , -794.42],
+            [504.47 , 658.88 , 48.60 , -794.42],
+            [103.50 , 569.98 , 633.68 , -860.25],
+            [229.37 , 7.32 , 411.98 , -575.81],
+            [428.73 , -413.46 , 250.38 , -133.93],
+            [-506.97 , 343.33 , 327.68 , -4.40]
+            ])
 
     u = np.shape(samp)[0]
     st1 = timeit.default_timer()
