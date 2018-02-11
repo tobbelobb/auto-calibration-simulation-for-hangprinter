@@ -340,6 +340,11 @@ if __name__ == "__main__":
                         [   0.0,     0.0, 2865.0]])
 
 
+    samp = np.zeros((100,3)) # Allocate space for 100 samples
+    # See https://stackoverflow.com/questions/5064822/how-to-add-items-into-a-numpy-array
+
+    u = 0 # Sample counter
+
     # TODO: auto-detect port
     if(args['auto_collect_samples']):
 
@@ -350,7 +355,7 @@ if __name__ == "__main__":
         port = args['port']
 
         # TODO: make regexp and test it
-        M114_S1_response_exp = re.compile("\[\(\f\), \(\f\), \(\f\), \(\f\)\],") # Detect array-like string?
+        M114_S1_response_exp = re.compile("\[([-+]?\d*\.?\d*), ([-+]?\d*\.?\d*), ([-+]?\d*\.?\d*), ([-+]?\d*\.?\d*)\],") # Detect "[1.2, -3.4, 5.6, -7.8],"
 
         # TODO: auto-find the right port
         class serial_to_printer(cmd.Cmd):
@@ -401,6 +406,13 @@ if __name__ == "__main__":
         p.send_now("G95 A40 B40 C40")
         p.send_now("G4 P1000")
         p.send_now("M114 S1") # Ask for data point
+        response_str = "bytytmig"
+
+        # pronsole.py does
+        # self.recvlisteners.append(self.waitforsdresponse)
+        response_l = M114_S1_response_exp.findall(response)
+        samp[u] = np.array([response_l[0][0], response_l[0][1], response_l[0][2], response_l[0][3]])
+        u = u + 1
 
         p.disconnect() # this is how you disconnect from the printer once you are done. This will also stop running prints.
 
