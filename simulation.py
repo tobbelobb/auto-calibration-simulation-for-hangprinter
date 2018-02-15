@@ -18,6 +18,7 @@ Z = 2
 params_anch = 9
 A_bx = 2
 A_cx = 5
+axes_letters = ["A", "B", "C", "D"]
 
 def symmetric_anchors(l, az=-120., bz=-120., cz=-120.):
     anchors = np.array(np.zeros((4, 3)))
@@ -321,6 +322,71 @@ def print_anch_err(sol_anch, anchors):
     print("Err_C_Z: %9.3f" % (sol_anch[C,Z] - anchors[C,Z]))
     print("Err_D_Z: %9.3f" % (sol_anch[D,Z] - anchors[D,Z]))
 
+
+def save_samp(samp, response, u)
+    response_l = M114_S1_response_exp.findall(response)
+    samp[u] = np.array([response_l[0][A], response_l[0][B], response_l[0][C], response_l[0][D]])
+    return u+1
+
+def read_serial(serial_instance):
+   try:
+     response_str = serial_instance.readline() # what do we actually get here?
+   except SelectError as e:
+       if 'Bad file descriptor' in e.args[1]:
+           self.logError(_(u"Can't read from printer (disconnected?) (SelectError {0}): {1}").format(e.errno, decode_utf8(e.strerror)))
+           return None
+       else:
+           self.logError(_(u"SelectError ({0}): {1}").format(e.errno, decode_utf8(e.strerror)))
+           raise
+   except SerialException as e:
+       self.logError(_(u"Can't read from printer (disconnected?) (SerialException): {0}").format(decode_utf8(str(e))))
+       return None
+   except OSError as e:
+       if e.errno == errno.EAGAIN:  # Not a real error, no data was available
+           return ""
+       self.logError(_(u"Can't read from printer (disconnected?) (OS Error {0}): {1}").format(e.errno, e.strerror))
+       return None
+   return response_str
+
+def tighten_gradually(p, axes, smallwait=100, endwait=1000):
+    for effort in [20, 25, 30, 35, 40]:
+        cmd = "G95"
+        for letter_idx in [A, B, C, D]:
+            if(letter_idx in axes):
+                cmd = cmd + " " + axis_letters[letter_idx]  + str(effort)
+        p.send_now(cmd)
+        p.send_now("G4 P" + str(smallwait))
+    if(endwait > smallwait):
+        p.send_now("G4 P" + str(endwait - smallwait))
+
+def move_axis(p, axis, length, speed=1000):
+    """Warning: Leaves non-moved axis in torque mode effort 5
+    """
+    cmd = "G95"
+    for letter_idx in [A, B, C, D]:
+        if(letter_idx == axis):
+            cmd = cmd + " " + axis_letters[letter_idx]  + str(0)
+        else:
+            cmd = cmd + " " + axis_letters[letter_idx]  + str(5)
+    p.send_now(cmd)
+    cmd = "G6 S2 " + str(axis) + str(length) + " F" + str(speed)
+    p.send_now(cmd)
+
+def get_data_point(p, samp, u):
+    M114_S1_response_exp = re.compile("\[([-+]?\d*\.?\d*), ([-+]?\d*\.?\d*), ([-+]?\d*\.?\d*), ([-+]?\d*\.?\d*)\],")
+    p.send_now("G95 A0 B0 C0 D0") # Need position mode on all axes when read
+    p.send_now("M114 S1") # Ask for data point
+    response_str = read_serial(p.printer) # what do we actually get here?
+    return save_samp(samp, response_str, u)
+
+def go_back_home(p, samp, u, safety_diff=10):
+    p.send_now("G95 A0 B0 C0 D0") # Need position mode to move
+    cmd = "G6 S2 A" + str(-samp[u-1][A] + safety_diff)
+             + " B" + str(-samp[u-1][B] + safety_diff)
+             + " C" + str(-samp[u-1][C] + safety_diff)
+             + " D" + str(-samp[u-1][D] + safety_diff)
+    p.send_now(cmd)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Figure out where Hangprinter anchors are by looking at line difference samples.')
     parser.add_argument('-d', '--debug', help='Print debug information', action='store_true')
@@ -340,44 +406,18 @@ if __name__ == "__main__":
                         [   0.0,     0.0, 2865.0]])
 
 
-    samp = np.zeros((100,3)) # Allocate space for 100 samples
     # See https://stackoverflow.com/questions/5064822/how-to-add-items-into-a-numpy-array
-
+    samp = np.zeros((100,4)) # Allocate space for 100 samples
     u = 0 # Sample counter
 
     # TODO: auto-detect port
     if(args['auto_collect_samples']):
-
+        # Tries to collect 16 data points, 4 towards each anchor
         from printrun.printcore import printcore
         from printrun import gcoder
         import re
         baud = args['baud']
         port = args['port']
-
-        # TODO: make regexp and test it
-        M114_S1_response_exp = re.compile("\[([-+]?\d*\.?\d*), ([-+]?\d*\.?\d*), ([-+]?\d*\.?\d*), ([-+]?\d*\.?\d*)\],") # Detect "[1.2, -3.4, 5.6, -7.8],"
-
-        # TODO: auto-find the right port
-        class serial_to_printer(cmd.Cmd):
-            # Selected parts of pronsole
-            def scanserial(self):
-                """scan for available ports. return a list of device names."""
-                baselist = []
-                if os.name == "nt":
-                    try:
-                        key = _winreg.OpenKey(_winreg.HKEY_LOCAL_MACHINE, "HARDWARE\\DEVICEMAP\\SERIALCOMM")
-                        i = 0
-                        while(1):
-                            baselist += [_winreg.EnumValue(key, i)[1]]
-                            i += 1
-                    except:
-                        pass
-                for g in ['/dev/ttyUSB*', '/dev/ttyACM*', "/dev/tty.*", "/dev/cu.*", "/dev/rfcomm*"]:
-                    baselist += glob.glob(g)
-                return filter(self._bluetoothSerialFilter, baselist)
-
-            def _bluetoothSerialFilter(self, serial):
-                return not ("Bluetooth" in serial or "FireFly" in serial)
 
         p=printcore(port,baud) # or p.printcore('COM3',115200) on Windows
         p.send_now("G95 A40 B40 C40 D30") # Set torque mode all axes
@@ -391,30 +431,99 @@ if __name__ == "__main__":
             input("Let your mover go and press Return...")
         except SyntaxError:
             pass
-        p.send_now("G95 A5 B5 C5 D0") # D in pos mode, others weak
-        p.send_now("G6 S2 D-50") # Drag in some D-line
-        p.send_now("G95 A15 B15 C15") # Tighten ABC slowly
-        p.send_now("G4 P100")
-        p.send_now("G95 A20 B20 C20")
-        p.send_now("G4 P100")
-        p.send_now("G95 A25 B25 C25")
-        p.send_now("G4 P100")
-        p.send_now("G95 A30 B30 C30")
-        p.send_now("G4 P100")
-        p.send_now("G95 A35 B35 C35")
-        p.send_now("G4 P100")
-        p.send_now("G95 A40 B40 C40")
-        p.send_now("G4 P1000")
-        p.send_now("M114 S1") # Ask for data point
-        response_str = "bytytmig"
 
-        # pronsole.py does
-        # self.recvlisteners.append(self.waitforsdresponse)
-        response_l = M114_S1_response_exp.findall(response)
-        samp[u] = np.array([response_l[0][0], response_l[0][1], response_l[0][2], response_l[0][3]])
-        u = u + 1
+        move_axis(p, D, -50)
+        tighten_gradually(p, [A, B, C])
+        u = get_data_point(p, samp, u)
 
-        p.disconnect() # this is how you disconnect from the printer once you are done. This will also stop running prints.
+        move_axis(p, D, -50)
+        tighten_gradually(p, [A, B, C])
+        u = get_data_point(p, samp, u)
+
+        move_axis(p, D, -50)
+        tighten_gradually(p, [A, B, C])
+        u = get_data_point(p, samp, u)
+
+        move_axis(p, D, -50)
+        tighten_gradually(p, [A, B, C])
+        u = get_data_point(p, samp, u)
+
+        go_back_home(p, samp, u)
+        tighten_gradually(p, [A, B, C])
+
+        move_axis(p, D, -10)
+        move_axis(p, A, -50)
+        tighten_gradually(p, [B, C, D])
+        u = get_data_point(p, samp, u)
+
+        move_axis(p, D, -10)
+        move_axis(p, A, -50)
+        tighten_gradually(p, [B, C, D])
+        u = get_data_point(p, samp, u)
+
+        move_axis(p, D, -10)
+        move_axis(p, A, -50)
+        tighten_gradually(p, [B, C, D])
+        u = get_data_point(p, samp, u)
+
+        move_axis(p, D, -10)
+        move_axis(p, A, -50)
+        tighten_gradually(p, [B, C, D])
+        u = get_data_point(p, samp, u)
+
+        go_back_home(p, samp, u)
+        tighten_gradually(p, [A, B, C])
+
+        move_axis(p, D, -10)
+        move_axis(p, B, -50)
+        tighten_gradually(p, [A, C, D])
+        u = get_data_point(p, samp, u)
+
+        move_axis(p, D, -10)
+        move_axis(p, B, -50)
+        tighten_gradually(p, [A, C, D])
+        u = get_data_point(p, samp, u)
+
+        move_axis(p, D, -10)
+        move_axis(p, B, -50)
+        tighten_gradually(p, [A, C, D])
+        u = get_data_point(p, samp, u)
+
+        move_axis(p, D, -10)
+        move_axis(p, B, -50)
+        tighten_gradually(p, [A, C, D])
+        u = get_data_point(p, samp, u)
+
+        go_back_home(p, samp, u)
+        tighten_gradually(p, [A, B, C])
+
+        move_axis(p, D, -10)
+        move_axis(p, C, -50)
+        tighten_gradually(p, [A, B, D])
+        u = get_data_point(p, samp, u)
+
+        move_axis(p, D, -10)
+        move_axis(p, C, -50)
+        tighten_gradually(p, [A, B, D])
+        u = get_data_point(p, samp, u)
+
+        move_axis(p, D, -10)
+        move_axis(p, C, -50)
+        tighten_gradually(p, [A, B, D])
+        u = get_data_point(p, samp, u)
+
+        move_axis(p, D, -10)
+        move_axis(p, C, -50)
+        tighten_gradually(p, [A, B, D])
+        u = get_data_point(p, samp, u)
+
+        go_back_home(p, samp, u)
+        tighten_gradually(p, [A, B, C])
+
+        print("Data collection finished. Collected %d samples:" % u)
+        print(samp)
+        print("Starting optimization routine...\n")
+        #p.disconnect()
 
     else:
         # Replace this with your collected data
@@ -431,8 +540,8 @@ if __name__ == "__main__":
             [428.73 , -413.46 , 250.38 , -133.93],
             [-506.97 , 343.33 , 327.68 , -4.40]
             ])
+        u = np.shape(samp)[0]
 
-    u = np.shape(samp)[0]
     st1 = timeit.default_timer()
     solution = solve(samp, cost_sq, args['method'], args['cx_is_positive'])
     st2 = timeit.default_timer()
@@ -444,7 +553,10 @@ if __name__ == "__main__":
     if(u < 13):
         print("\nWarning: Sample count below 13 detected.\n         Do not trust the below values.\n         Collect more samples.")
     print_anch(sol_anch)
-    if (args['debug']):
+    if(np.sum(solution[0:params_anch] == 0) > 1):
+        print("Optimization unsuccessful. Zero anchors detected.")
+        print("The most common cause is errors in the sample data.")
+    if(args['debug']):
         print_anch_err(sol_anch, anchors)
         print("Method: %s" % args['method'])
         print("RUN TIME : {0}".format(st2-st1))
