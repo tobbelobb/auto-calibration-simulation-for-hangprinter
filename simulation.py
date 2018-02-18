@@ -190,11 +190,16 @@ def posvec2matrix(v, u):
 def posmatrix2vec(m):
     return np.reshape(m, np.shape(m)[0]*3)
 
-def solve(samp, _cost, method, cx_is_positive=False):
+def solve(samp, xyz_of_samp, _cost, method, cx_is_positive=False):
     """Find reasonable positions and anchors given a set of samples.
     """
+
+    u = np.shape(samp)[0]
+    ux = np.shape(xyz_of_samp)[0]
+    number_of_params_pos = 3*(u - ux)
+
     def costx(posvec, anchvec):
-        """Identical to cost, except the shape of inputs and capture of samp and u
+        """Identical to cost, except the shape of inputs and capture of samp, xyz_of_samp, ux, and u
 
         Parameters
         ----------
@@ -202,11 +207,11 @@ def solve(samp, _cost, method, cx_is_positive=False):
                x1   y1   z1   x2   y2   z2   ...  xu   yu   zu
         """
         anchors = anchorsvec2matrix(anchvec)
-        pos = np.reshape(posvec, (u,3))
+        pos = np.zeros((u, 3))
+        if(np.size(xyz_of_samp) != 0):
+            pos[0:ux] = xyz_of_samp
+        pos[ux:] = np.reshape(posvec, (u-ux,3))
         return _cost(anchors, pos, samp)
-
-    u = np.shape(samp)[0]
-    number_of_params_pos = 3*u
 
     l_long = 5000.0
     l_short = 1700.0
@@ -231,7 +236,7 @@ def solve(samp, _cost, method, cx_is_positive=False):
                     0.0, # A_cy > 0
                -l_short, # A_cz > -1700.0
                     0.0, # A_dz > 0
-          ] + [-l_short, -l_short, data_z_min]*u
+          ] + [-l_short, -l_short, data_z_min]*(u-ux)
     ub = [          0.0, # A_ay < 0
                 l_short, # A_az < 1700
                  l_long, # A_bx < 4000
@@ -241,7 +246,11 @@ def solve(samp, _cost, method, cx_is_positive=False):
                  l_long, # A_cy < 4000.0
                 l_short, # A_cz < 1700
                  l_long, # A_dz < 4000.0
-          ] + [l_short, l_short, 2*l_short]*u
+          ] + [l_short, l_short, 2*l_short]*(u-ux)
+
+    # If the user has input xyz data, then signs should be ok anyways
+    if(ux > 2):
+        lb[A_bx] = -l_long
 
     # It would work to just swap the signs of bx and cx after the optimization
     # But there are fewer assumptions involved in setting correct bounds from the start instead
@@ -253,7 +262,7 @@ def solve(samp, _cost, method, cx_is_positive=False):
         ub[A_bx] = ub[A_cx]
         ub[A_cx] = tmp
 
-    pos_est0 = np.zeros((u,3))
+    pos_est0 = np.zeros((u-ux,3)) # The positions we need to estimate
     anchors_est = np.array([[0.0, 0.0, 0.0],
                             [0.0, 0.0, 0.0],
                             [0.0, 0.0, 0.0],
@@ -321,13 +330,21 @@ def print_anch_err(sol_anch, anchors):
     print("Err_C_Z: %9.3f" % (sol_anch[C,Z] - anchors[C,Z]))
     print("Err_D_Z: %9.3f" % (sol_anch[D,Z] - anchors[D,Z]))
 
+class Store_as_array(argparse._StoreAction):
+    def __call__(self, parser, namespace, values, option_string=None):
+        values = np.array(values)
+        return super(Store_as_array,self).__call__(parser, namespace, values, option_string)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Figure out where Hangprinter anchors are by looking at line difference samples.')
     parser.add_argument('-d', '--debug', help='Print debug information', action='store_true')
     parser.add_argument('-c', '--cx_is_positive', help='Use this flag if your C anchor should have a positive X-coordinate', action='store_true')
     parser.add_argument('-m', '--method', help='Available methods are L-BFGS-B (default), PowellDirectionalSolver (requires a library called Mystic), and SLSQP',
                        default='L-BFGS-B')
+    parser.add_argument('-x', '--xyz_of_samp', help='Specify the XYZ-positions where samples were made as numbers separated by spaces.', action=Store_as_array, type=float, nargs='+', default=np.array([]))
+    parser.add_argument('-s', '--sample_data', help='Specify the sample data you have found as numbers separated by spaces.', action=Store_as_array, type=float, nargs='+', default=np.array([]))
     args = vars(parser.parse_args())
+
 
     # Rough approximations from manual measuring.
     # Does not affect optimization result. Only used for manual sanity check.
@@ -336,27 +353,59 @@ if __name__ == "__main__":
                         [-970.0,   550.0,  -115.],
                         [   0.0,     0.0, 2865.0]])
 
-#    # Replace this with your collected data
-    samp = np.array([
-[400.53 , 175.53 , 166.10 , -656.90],
-[229.27 , 511.14 , -48.41 , -554.31],
-[-41.69 , -62.87 , 306.76 , -225.31],
-[272.97 , 176.65 , 381.13 , -717.81],
-[338.07 , 633.70 , 309.27 , -911.22],
-[504.47 , 658.88 , 48.60 , -794.42],
-[504.47 , 658.88 , 48.60 , -794.42],
-[103.50 , 569.98 , 633.68 , -860.25],
-[229.37 , 7.32 , 411.98 , -575.81],
-[428.73 , -413.46 , 250.38 , -133.93],
-[-506.97 , 343.33 , 327.68 , -4.40]
-        ])
+    #a = np.zeros((2,3))
+    xyz_of_samp = args['xyz_of_samp']
+    if(np.size(xyz_of_samp) != 0):
+        if(np.size(xyz_of_samp)%3 != 0):
+            print("Error: You specified %d numbers after your -x/--xyz_of_samp option, which is not a multiple of 3 numbers.")
+            sys.exit(1)
+        xyz_of_samp = xyz_of_samp.reshape((int(np.size(xyz_of_samp)/3),3))
+    else:
+        xyz_of_samp = np.array([
+                               # You might want to manually input positions where you made samples here like
+                               # [1.1, 2.2, 3.3],
+                               # ... etc
+                               ])
+
+    samp = args['sample_data']
+    if(np.size(samp) != 0):
+        if(np.size(samp)%4 != 0):
+            print("Please specify A, B, C, and D diffs of sampling points.")
+            print("You specified %d numbers after your -s/--sample_data option, which is not a multiple of 4 number of numbers.")
+            sys.exit(1)
+        samp = samp.reshape((int(np.size(samp)/4),4))
+    else:
+        # You might want to manually replace this with your collected data
+        samp = np.array([
+                         [400.53 , 175.53 , 166.10 , -656.90],
+                         [229.27 , 511.14 , -48.41 , -554.31],
+                         [-41.69 , -62.87 , 306.76 , -225.31],
+                         [272.97 , 176.65 , 381.13 , -717.81],
+                         [338.07 , 633.70 , 309.27 , -911.22],
+                         [504.47 , 658.88 , 48.60 , -794.42],
+                         [504.47 , 658.88 , 48.60 , -794.42],
+                         [103.50 , 569.98 , 633.68 , -860.25],
+                         [229.37 , 7.32 , 411.98 , -575.81],
+                         [428.73 , -413.46 , 250.38 , -133.93],
+                         [-506.97 , 343.33 , 327.68 , -4.40]
+                        ])
 
     u = np.shape(samp)[0]
+    ux = np.shape(xyz_of_samp)[0]
+    if(ux > u):
+        print("Error: You have more xyz positions than samples!")
+        print("You have %d xyz positions and %d samples" %(ux, u))
+        sys.exit(1)
+
     st1 = timeit.default_timer()
-    solution = solve(samp, cost_sq, args['method'], args['cx_is_positive'])
+    solution = solve(samp, xyz_of_samp, cost_sq, args['method'], args['cx_is_positive'])
     st2 = timeit.default_timer()
     sol_anch = anchorsvec2matrix(solution[0:params_anch])
-    the_cost = cost_sq(anchorsvec2matrix(solution[0:params_anch]), np.reshape(solution[params_anch:], (u,3)), samp)
+
+    if(np.size(xyz_of_samp) != 0):
+        the_cost = cost_sq(anchorsvec2matrix(solution[0:params_anch]), np.vstack((xyz_of_samp, np.reshape(solution[params_anch:], (u-ux,3)))), samp)
+    else:
+        the_cost = cost_sq(anchorsvec2matrix(solution[0:params_anch]), np.reshape(solution[params_anch:], (u,3)), samp)
     print("samples:         %d" % u)
     print("total cost:      %f" % the_cost)
     print("cost per sample: %f" % (the_cost/u))
@@ -367,4 +416,6 @@ if __name__ == "__main__":
         print_anch_err(sol_anch, anchors)
         print("Method: %s" % args['method'])
         print("RUN TIME : {0}".format(st2-st1))
+    print("positions: ")
+    print(solution[params_anch:])
 
