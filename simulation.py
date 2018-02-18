@@ -345,6 +345,12 @@ if __name__ == "__main__":
     parser.add_argument('-s', '--sample_data', help='Specify the sample data you have found as numbers separated by spaces.', action=Store_as_array, type=float, nargs='+', default=np.array([]))
     args = vars(parser.parse_args())
 
+    if(args['method'] == "0"):
+        args['method'] = 'L-BFGS-B'
+    if(args['method'] == "1"):
+        args['method'] = 'PowellDirectionalSolver'
+    if(args['method'] == "2"):
+        args['method'] = 'SLSQP'
 
     # Rough approximations from manual measuring.
     # Does not affect optimization result. Only used for manual sanity check.
@@ -365,7 +371,15 @@ if __name__ == "__main__":
                                # You might want to manually input positions where you made samples here like
                                [ -13.82573298,  185.92015633, 664.66427937],
                                [-389.81246064, -32.85556323 , 587.55219886],
-                               [ 237.76400537, -126.40678778, 239.0320148]
+                               [ 237.76400537, -126.40678778, 239.0320148],
+                               #[ 143.2309169 ,  -15.59590026,  722.89425101],
+                               #[-267.39107719, -139.31819633,  934.36563975],
+                               #[-469.27951032,  102.82165224,  850.67454249],
+                               #[-469.27950169,  102.82167868,  850.6745381 ],
+                               #[  59.64224478, -448.29890816,  911.68810588],
+                               #[ 273.18632979,   -1.66414539,  591.93608109],
+                               #[ 345.42863651,  365.92077557,  180.51780131],
+                               #[  -2.49959496, -527.89199888,   53.34811685],
                                ])
 
     samp = args['sample_data']
@@ -402,21 +416,33 @@ if __name__ == "__main__":
     solution = solve(samp, xyz_of_samp, cost_sq, args['method'], args['cx_is_positive'])
     st2 = timeit.default_timer()
     sol_anch = anchorsvec2matrix(solution[0:params_anch])
+    sol_pos = np.zeros((u,3))
 
     if(np.size(xyz_of_samp) != 0):
-        the_cost = cost_sq(anchorsvec2matrix(solution[0:params_anch]), np.vstack((xyz_of_samp, np.reshape(solution[params_anch:], (u-ux,3)))), samp)
+        sol_pos = np.vstack((xyz_of_samp, np.reshape(solution[params_anch:], (u-ux,3))))
+        the_cost = cost_sq(anchorsvec2matrix(solution[0:params_anch]), sol_pos, samp)
     else:
-        the_cost = cost_sq(anchorsvec2matrix(solution[0:params_anch]), np.reshape(solution[params_anch:], (u,3)), samp)
-    print("samples:         %d" % u)
-    print("total cost:      %f" % the_cost)
-    print("cost per sample: %f" % (the_cost/u))
-    if(u < 13):
-        print("\nWarning: Sample count below 13 detected.\n         Do not trust the below values.\n         Collect more samples.")
+        sol_pos = np.reshape(solution[params_anch:], (u,3))
+        the_cost = cost_sq(anchorsvec2matrix(solution[0:params_anch]), sol_pos, samp)
+    print("samples:          %d" % u)
+    print("input xyz coords: %d" % (3*ux))
+    print("total cost:       %f" % the_cost)
+    print("cost per sample:  %f" % (the_cost/u))
+
+    if((u+3*ux) < params_anch):
+        print("\nError: Lack of data detected.\n       Collect more samples.")
+        if(not args['debug']):
+            sys.exit(1)
+        else:
+            print("       Debug flag is set, so printing bogus anchor values anyways.")
+    elif((u+3*ux) < params_anch+4):
+        print("\nWarning: Data set might be too small.\n         The below values are unreliable unless input data is extremely accurate.")
+
     print_anch(sol_anch)
     if (args['debug']):
         print_anch_err(sol_anch, anchors)
         print("Method: %s" % args['method'])
         print("RUN TIME : {0}".format(st2-st1))
         print("positions: ")
-        print(solution[params_anch:])
+        print(sol_pos)
 
