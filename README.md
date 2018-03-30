@@ -157,3 +157,7 @@ python setup.py build
 sudo python setup.py install
 ```
 
+For more on usage, try
+```bash
+python ./simulation.py --help
+```

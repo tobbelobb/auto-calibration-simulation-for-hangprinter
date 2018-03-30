@@ -339,7 +339,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Figure out where Hangprinter anchors are by looking at line difference samples.')
     parser.add_argument('-d', '--debug', help='Print debug information', action='store_true')
     parser.add_argument('-c', '--cx_is_positive', help='Use this flag if your C anchor should have a positive X-coordinate', action='store_true')
-    parser.add_argument('-m', '--method', help='Available methods are L-BFGS-B (default), PowellDirectionalSolver (requires a library called Mystic), and SLSQP',
+    parser.add_argument('-m', '--method', help='Available methods are L-BFGS-B (default), PowellDirectionalSolver (requires a library called Mystic), and SLSQP. As a shorthand, you can use 0, 1, or 2, for referring to the three methods respectively.',
                        default='L-BFGS-B')
     parser.add_argument('-x', '--xyz_of_samp', help='Specify the XYZ-positions where samples were made as numbers separated by spaces.', action=Store_as_array, type=float, nargs='+', default=np.array([]))
     parser.add_argument('-s', '--sample_data', help='Specify the sample data you have found as numbers separated by spaces.', action=Store_as_array, type=float, nargs='+', default=np.array([]))
