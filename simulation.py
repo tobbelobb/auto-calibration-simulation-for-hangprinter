@@ -294,12 +294,12 @@ def solve(samp, xyz_of_samp, _cost, method, cx_is_positive=False):
         return x_guess0
     elif(method == 'SLSQP'):
         # 'SLSQP' is crazy fast and lands on 0.0000 error
-        x_guess0 = scipy.optimize.minimize(lambda x: costx(x[params_anch:], x[0:params_anch]), x_guess0, method=method, bounds=zip(lb,ub),
+        x_guess0 = scipy.optimize.minimize(lambda x: costx(x[params_anch:], x[0:params_anch]), x_guess0, method=method, bounds=list(zip(lb,ub)),
                 options={'disp':True,'ftol':1e-20, 'maxiter':150000})
         return x_guess0.x
     elif(method == 'L-BFGS-B'):
         ## 'L-BFGS-B' Is crazy fast but doesn't quite land at 0.0000 error
-        x_guess0 = scipy.optimize.minimize(lambda x: costx(x[params_anch:], x[0:params_anch]), x_guess0, method=method, bounds=zip(lb,ub),
+        x_guess0 = scipy.optimize.minimize(lambda x: costx(x[params_anch:], x[0:params_anch]), x_guess0, method=method, bounds=list(zip(lb,ub)),
                 options={'ftol':1e-12, 'maxiter':150000})
         return x_guess0.x
     else:
