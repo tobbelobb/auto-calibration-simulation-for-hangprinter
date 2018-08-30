@@ -13,10 +13,14 @@ If your machine's B-anchor is negative then your output anchors Bx and Cx will h
 Relies heavily on [numpy](https://github.com/numpy/numpy).
 It uses either [scipy](https://scipy.org/) or [mystic](https://github.com/uqfoundation/mystic) for the optimization algorithms.
 
-
 Here's the commands I used to get Python2.7 libs up and running on my machine running Ubuntu 14.04:
 ```bash
 sudo apt-get install build-essential python-dev python-pip python-tk python-scipy python-numpy
+```
+
+To install mystic, try
+```bash
+sudo pip install mystic
 ```
 
 Once dependencies and data are in place, the simulation runs with
