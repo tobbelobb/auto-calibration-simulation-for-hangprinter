@@ -74,18 +74,18 @@ def positions(n, l, fuzz=10):
     Parameters
     ----------
     n : Number of positions of which to sample along each axis
-    l : Max length from origo along each axis to sample
+    l : Max length from origin along each axis to sample
     fuzz: How much each measurement point can differ from the regular grid
     """
     from itertools import product
     pos = np.array(list(product(np.linspace(-l, l, n), repeat = 3))) \
             + 2.*fuzz*(np.random.rand(n**3, 3) - 0.5) \
             + [0, 0, 1*l]
-    index_closest_to_origo = np.int(np.shape(pos)[0]/2)-int(n/2)
-    # Make pos[0] a point fairly close to origo
+    index_closest_to_origin = np.int(np.shape(pos)[0]/2)-int(n/2)
+    # Make pos[0] a point fairly close to origin
     tmp = pos[0].copy()
-    pos[0] = pos[index_closest_to_origo]
-    pos[index_closest_to_origo] = tmp
+    pos[0] = pos[index_closest_to_origin]
+    pos[index_closest_to_origin] = tmp
     return pos
 
 
@@ -103,7 +103,7 @@ def samples(anchors, pos, fuzz=1):
     line_lengths = np.linalg.norm(anchors - pos[:,np.newaxis,:], 2, 2)
     return line_lengths - line_lengths[0] + 2.*fuzz*(np.random.rand(np.shape(pos)[0], 1) - 0.5)
 
-def samples_relative_to_origo(anchors, pos, fuzz=1):
+def samples_relative_to_origin(anchors, pos, fuzz=1):
     """Possible relative line length measurments according to anchors and position.
 
     Parameters
@@ -117,7 +117,7 @@ def samples_relative_to_origo(anchors, pos, fuzz=1):
     line_lengths = np.linalg.norm(anchors - pos[:,np.newaxis,:], 2, 2)
     return line_lengths - np.linalg.norm(anchors,2,1) + 2.*fuzz*(np.random.rand(np.shape(pos)[0], 1) - 0.5)
 
-def samples_relative_to_origo_no_fuzz(anchors, pos):
+def samples_relative_to_origin_no_fuzz(anchors, pos):
     """Possible relative line length measurments according to anchors and position.
 
     Parameters
@@ -130,6 +130,44 @@ def samples_relative_to_origo_no_fuzz(anchors, pos):
     # Broadcasting happens u times and we get ux4x3 output before norm operation
     line_lengths = np.linalg.norm(anchors - pos[:,np.newaxis,:], 2, 2)
     return line_lengths - np.linalg.norm(anchors,2,1)
+
+# Compare this to data we would have gotten with no buildup compensation like this:
+# no_buidup_comp = (1./65.)*(360./(2*np.pi))*(255./20.)*2*samples_relative_to_origin_no_fuzz(anchors, pos)
+
+def motor_pos_samples_with_spool_buildup_compensation(anchors,
+        pos,
+        spool_buildup_factor = 0.5,
+        spool_r_in_origin = np.array([65., 65., 65., 65.]),
+        spool_to_motor_gearing_factor = 12.75,
+        mech_adv = np.array([2., 2., 2., 2.]),
+        number_of_lines_per_spool = np.array([1., 1., 1., 1.]),
+        fuzz=0):
+    """What motor positions (in degrees) motors would be at
+    """
+    # Assure np.array type
+    spool_r_in_origin = np.array(spool_r_in_origin)
+    mech_adv = np.array(mech_adv)
+    number_of_lines_per_spool = np.array(number_of_lines_per_spool)
+
+    spool_r_in_origin_sq = spool_r_in_origin * spool_r_in_origin
+
+    nr_lines_dir_tmp = mech_adv * number_of_lines_per_spool
+    k2 = -nr_lines_dir_tmp * spool_buildup_factor
+
+    # we now want to use degrees instead of steps as unit of rotation
+    # so setting 360 where steps per motor rotation is in firmware buildup compensation algorithms
+    degrees_per_unit_times_r_tmp = (spool_to_motor_gearing_factor * mech_adv * 360.0) / (2.0 * np.pi)
+    k0 = 2.0 * degrees_per_unit_times_r_tmp / k2
+
+    line_lengths_origin = np.linalg.norm(anchors - np.array([[[0,0,0]]]), 2, 2)
+    # line_on_spool_origin is defined as zero. spool_r_in_origin is meant to account for buildup at origin.
+    k1 = spool_buildup_factor * (nr_lines_dir_tmp * line_lengths_origin) + spool_r_in_origin_sq
+    sqrtk1 = np.sqrt(k1)
+
+    relative_line_lengths = np.array( samples_relative_to_origin_no_fuzz(anchors, pos))
+    motor_positions = k0 * (np.sqrt(k1 + relative_line_lengths*k2) - sqrtk1)
+    return motor_positions
+
 
 def cost(anchors, pos, samp):
     """If all positions and samples correspond perfectly, this returns 0.
@@ -152,7 +190,7 @@ def cost(anchors, pos, samp):
     pos: ux3 matrix of positions
     samp : ux4 matrix of corresponding samples, starting with [0., 0., 0., 0.]
     """
-    return np.sum(np.abs(samples_relative_to_origo_no_fuzz(anchors, pos) - samp))
+    return np.sum(np.abs(samples_relative_to_origin_no_fuzz(anchors, pos) - samp))
 
 def cost_sq(anchors, pos, samp):
     """
@@ -164,7 +202,7 @@ def cost_sq(anchors, pos, samp):
     (sqrt((A_cx-x_i)^2 + (A_cy-y_i)^2 + (A_cz-z_i)^2) - sqrt(A_cx^2 + A_cy^2 + A_cz^2) - t_ic)^2 +
     (sqrt((A_dx-x_i)^2 + (A_dy-y_i)^2 + (A_dz-z_i)^2) - sqrt(A_dx^2 + A_dy^2 + A_dz^2) - t_id)^2
     """
-    return np.sum(pow((samples_relative_to_origo_no_fuzz(anchors, pos) - samp), 2)) # Sum of squares
+    return np.sum(pow((samples_relative_to_origin_no_fuzz(anchors, pos) - samp), 2)) # Sum of squares
 
 def anchorsvec2matrix(anchorsvec):
     """ Create a 4x3 anchors matrix from 6 element anchors vector.
