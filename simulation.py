@@ -132,11 +132,11 @@ def samples_relative_to_origin_no_fuzz(anchors, pos):
     return line_lengths - np.linalg.norm(anchors,2,1)
 
 # Compare this to data we would have gotten with no buildup compensation like this:
-# no_buidup_comp = (1./65.)*(360./(2*np.pi))*(255./20.)*2*samples_relative_to_origin_no_fuzz(anchors, pos)
+# no_buidup_comp = 12.75*2*samples_relative_to_origin_no_fuzz(anchors, pos)*360/(2*np.pi*65)
 
 def motor_pos_samples_with_spool_buildup_compensation(anchors,
         pos,
-        spool_buildup_factor = 0.5,
+        spool_buildup_factor = 0.005,
         spool_r_in_origin = np.array([65., 65., 65., 65.]),
         spool_to_motor_gearing_factor = 12.75,
         mech_adv = np.array([2., 2., 2., 2.]),
@@ -151,8 +151,8 @@ def motor_pos_samples_with_spool_buildup_compensation(anchors,
 
     spool_r_in_origin_sq = spool_r_in_origin * spool_r_in_origin
 
-    nr_lines_dir_tmp = mech_adv * number_of_lines_per_spool
-    k2 = -nr_lines_dir_tmp * spool_buildup_factor
+    # Buildup per line times lines. Minus sign because more line in air means less line on spool
+    k2 = -mech_adv * number_of_lines_per_spool * spool_buildup_factor
 
     # we now want to use degrees instead of steps as unit of rotation
     # so setting 360 where steps per motor rotation is in firmware buildup compensation algorithms
@@ -160,12 +160,10 @@ def motor_pos_samples_with_spool_buildup_compensation(anchors,
     k0 = 2.0 * degrees_per_unit_times_r_tmp / k2
 
     line_lengths_origin = np.linalg.norm(anchors - np.array([[[0,0,0]]]), 2, 2)
-    # line_on_spool_origin is defined as zero. spool_r_in_origin is meant to account for buildup at origin.
-    k1 = spool_buildup_factor * (nr_lines_dir_tmp * line_lengths_origin) + spool_r_in_origin_sq
-    sqrtk1 = np.sqrt(k1)
 
-    relative_line_lengths = np.array( samples_relative_to_origin_no_fuzz(anchors, pos))
-    motor_positions = k0 * (np.sqrt(k1 + relative_line_lengths*k2) - sqrtk1)
+    relative_line_lengths = samples_relative_to_origin_no_fuzz(anchors, pos)
+    motor_positions = k0 * (np.sqrt(spool_r_in_origin_sq + relative_line_lengths*k2) - spool_r_in_origin)
+
     return motor_positions
 
 
