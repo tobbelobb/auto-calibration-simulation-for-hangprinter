@@ -157,7 +157,6 @@ def motor_pos_samples_with_spool_buildup_compensation(
     spool_to_motor_gearing_factor=12.75,
     mech_adv=np.array([2.0, 2.0, 2.0, 2.0]),
     number_of_lines_per_spool=np.array([1.0, 1.0, 1.0, 1.0]),
-    fuzz=0,
 ):
     """What motor positions (in degrees) motors would be at
     """
@@ -173,10 +172,10 @@ def motor_pos_samples_with_spool_buildup_compensation(
 
     # we now want to use degrees instead of steps as unit of rotation
     # so setting 360 where steps per motor rotation is in firmware buildup compensation algorithms
-    degrees_per_unit_times_r_tmp = (
-        spool_to_motor_gearing_factor * mech_adv * 360.0
-    ) / (2.0 * np.pi)
-    k0 = 2.0 * degrees_per_unit_times_r_tmp / k2
+    degrees_per_unit_times_r = (spool_to_motor_gearing_factor * mech_adv * 360.0) / (
+        2.0 * np.pi
+    )
+    k0 = 2.0 * degrees_per_unit_times_r / k2
 
     line_lengths_origin = np.linalg.norm(anchors - np.array([[[0, 0, 0]]]), 2, 2)
 
@@ -186,6 +185,27 @@ def motor_pos_samples_with_spool_buildup_compensation(
     )
 
     return motor_positions
+
+
+def motor_pos_samples_to_line_length_with_buildup_compensation(
+    motor_samps,
+    spool_buildup_factor=0.008,  # Qualified first guess for 0.5 mm line
+    spool_r=np.array([65.0, 65.0, 65.0, 65.0]),
+    spool_to_motor_gearing_factor=12.75,
+    mech_adv=np.array([2.0, 2.0, 2.0, 2.0]),
+    number_of_lines_per_spool=np.array([1.0, 1.0, 1.0, 1.0]),
+):
+    # Buildup per line times lines. Minus sign because more line in air means less line on spool
+    c1 = -mech_adv * number_of_lines_per_spool * spool_buildup_factor
+
+    # we now want to use degrees instead of steps as unit of rotation
+    # so setting 360 where steps per motor rotation is in firmware buildup compensation algorithms
+    degrees_per_unit_times_r = (spool_to_motor_gearing_factor * mech_adv * 360.0) / (
+        2.0 * np.pi
+    )
+    k0 = 2.0 * degrees_per_unit_times_r / c1
+
+    return (((motor_samps / k0) + spool_r) ** 2 - spool_r * spool_r) / c1
 
 
 def cost(anchors, pos, samp):
