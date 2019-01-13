@@ -328,22 +328,7 @@ def solve(motor_pos_samp, xyz_of_samp, _cost, method, cx_is_positive=False):
         if np.size(xyz_of_samp) != 0:
             pos[0:ux] = xyz_of_samp
         pos[ux:] = np.reshape(posvec, (u - ux, 3))
-        return _cost(anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r)
-
-    def costx_constant_buildup_params(posvec, anchvec):
-        """Identical to cost, except the shape of inputs and capture of samp, xyz_of_samp, ux, and u
-
-        Parameters
-        ----------
-        x : [A_ay A_az A_bx A_by A_bz A_cx A_cy A_cz A_dz
-               x1   y1   z1   x2   y2   z2   ...  xu   yu   zu
-        """
-        anchors = anchorsvec2matrix(anchvec)
-        pos = np.zeros((u, 3))
-        if np.size(xyz_of_samp) != 0:
-            pos[0:ux] = xyz_of_samp
-        pos[ux:] = np.reshape(posvec, (u - ux, 3))
-        return _cost(anchors, pos, motor_pos_samp, 0.008, np.array([65, 65, 65, 65]))
+        return _cost(anchors, pos, motor_pos_samp, spool_buildup_factor, np.array(spool_r))
 
     l_long = 5000.0
     l_short = 1700.0
@@ -369,7 +354,7 @@ def solve(motor_pos_samp, xyz_of_samp, _cost, method, cx_is_positive=False):
         0.0,  # A_cy > 0
         -l_short,  # A_cz > -1700.0
         0.0,  # A_dz > 0
-    ] + [-l_short, -l_short, data_z_min] * (u - ux) + [0.0001, 1, 1, 1, 1]
+    ] + [-l_short, -l_short, data_z_min] * (u - ux) + [0.0001, 60, 60, 60, 60]
     ub = [
         0.0,  # A_ay < 0
         l_short,  # A_az < 1700
@@ -380,7 +365,7 @@ def solve(motor_pos_samp, xyz_of_samp, _cost, method, cx_is_positive=False):
         l_long,  # A_cy < 4000.0
         l_short,  # A_cz < 1700
         l_long,  # A_dz < 4000.0
-    ] + [l_short, l_short, 2 * l_short] * (u - ux) + [0.01, 1000, 1000, 1000, 1000]
+    ] + [l_short, l_short, 2 * l_short] * (u - ux) + [0.01, 70, 70, 70, 70]
 
     # If the user has input xyz data, then signs should be ok anyways
     if ux > 2:
@@ -396,11 +381,11 @@ def solve(motor_pos_samp, xyz_of_samp, _cost, method, cx_is_positive=False):
         ub[A_bx] = ub[A_cx]
         ub[A_cx] = tmp
 
-    pos_est0 = np.zeros((u - ux, 3))  # The positions we need to estimate
+    pos_est = np.zeros((u - ux, 3))  # The positions we need to estimate
     anchors_est = np.array(
         [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]
     )
-    x_guess0 = list(anchorsmatrix2vec(anchors_est)) + list(posmatrix2vec(pos_est0)) + [0.001, 1, 1, 1, 1]
+    x_guess = list(anchorsmatrix2vec(anchors_est)) + list(posmatrix2vec(pos_est)) + [0.006, 63, 63, 63, 63]
 
     if method == "PowellDirectionalSolver":
         from mystic.termination import (
@@ -409,44 +394,84 @@ def solve(motor_pos_samp, xyz_of_samp, _cost, method, cx_is_positive=False):
             VTR,
         )
         from mystic.solvers import PowellDirectionalSolver
+        from mystic.solvers import BuckshotSolver
         from mystic.termination import Or, CollapseAt, CollapseAs
         from mystic.termination import ChangeOverGeneration as COG
 
+        from pathos.pools import ProcessPool as Pool
+        from mystic.monitors import VerboseLoggingMonitor
+
+        stepmon = VerboseLoggingMonitor(1,2)
+
         target = 1.0
-        term = Or((COG(generations=100), CollapseAt(target, generations=100)))
+        #term = Or((COG(generations=10), CollapseAt(target, generations=10)))
+        term = COG(generations=10)
 
         # Solver with constant buildup compensation parameters
-        solver0 = PowellDirectionalSolver(number_of_params_pos + params_anch)
-        solver0.SetEvaluationLimits(evaluations=3200000, generations=10000)
-        solver0.SetTermination(term)
-        solver0.SetInitialPoints(x_guess0[0:-params_buildup])
-        solver0.SetStrictRanges(lb[0:-params_buildup], ub[0:-params_buildup])
-        solver0.Solve(lambda x: costx_constant_buildup_params(x[params_anch:], x[0:params_anch]))
-        x_guess0[0:-params_buildup] = solver0.bestSolution
-        # PowellDirectional sometimes finds new ways if kickstarted anew
+        solver = PowellDirectionalSolver(number_of_params_pos + params_anch)
+        solver.SetEvaluationLimits(evaluations=3200000, generations=10000)
+        solver.SetTermination(term)
+        solver.SetInitialPoints(x_guess[0:-params_buildup])
+        solver.SetStrictRanges(lb[0:-params_buildup], ub[0:-params_buildup])
+        solver.Solve(lambda x: costx(x[params_anch:], x[0:params_anch], x_guess[-params_buildup], x_guess[-params_buildup+1:]))
+        x_guess[0:-params_buildup] = solver.bestSolution
         for i in range(1, 20):
-            solver0 = PowellDirectionalSolver(number_of_params_pos + params_anch)
-            solver0.SetInitialPoints(x_guess0[0:-params_buildup])
-            solver0.SetStrictRanges(lb[0:-params_buildup], ub[0:-params_buildup])
-            solver0.Solve(lambda x: costx_constant_buildup_params(x[params_anch:], x[0:params_anch]))
-            x_guess0[0:-params_buildup] = solver0.bestSolution
+            solver = PowellDirectionalSolver(number_of_params_pos + params_anch)
+            solver.SetInitialPoints(x_guess[0:-params_buildup])
+            solver.SetStrictRanges(lb[0:-params_buildup], ub[0:-params_buildup])
+            solver.Solve(lambda x: costx(x[params_anch:], x[0:params_anch], x_guess[-params_buildup], x_guess[-params_buildup+1:]))
+            x_guess[0:-params_buildup] = solver.bestSolution
 
-        # Solver 0
-        #solver0 = PowellDirectionalSolver(number_of_params_pos + params_anch + params_buildup)
-        #solver0.SetEvaluationLimits(evaluations=3200000, generations=10000)
-        #solver0.SetTermination(term)
-        #solver0.SetInitialPoints(x_guess0)
-        #solver0.SetStrictRanges(lb, ub)
-        #solver0.Solve(lambda x: costx(x[params_anch:-params_buildup], x[0:params_anch], x[-params_buildup], x[-params_buildup+1:]))
-        #x_guess0 = solver0.bestSolution
-        ## PowellDirectional sometimes finds new ways if kickstarted anew
+        lb[:-params_buildup] = [x - 100 for x in x_guess[:-params_buildup]]
+        ub[:-params_buildup] = [x + 100 for x in x_guess[:-params_buildup]]
+
+        ## Solver for both simultaneously
+        #solver = BuckshotSolver(number_of_params_pos + params_anch + params_buildup, 10)
+        #solver.SetNestedSolver(PowellDirectionalSolver)
+        #solver.SetMapper(Pool().map)
+        ##solver.SetGenerationMonitor(stepmon) # No bucket monitoring
+        #solver.SetEvaluationLimits(evaluations=3200000, generations=10000)
+        #solver.SetTermination(term)
+        #solver.SetStrictRanges(lb, ub)
+        #solver.Solve(lambda x: costx(x[params_anch:-params_buildup], x[0:params_anch], x[-params_buildup], x[-params_buildup+1:]))
+        #x_guess = solver.bestSolution
+
+        for i in range(0, 20):
+            solver = PowellDirectionalSolver(number_of_params_pos + params_anch + params_buildup)
+            solver.SetInitialPoints(x_guess)
+            solver.SetStrictRanges(lb, ub)
+            solver.Solve(lambda x: costx(x[params_anch:-params_buildup], x[0:params_anch], x[-params_buildup], x[-params_buildup+1:]))
+            x_guess = solver.bestSolution
+            lb[:-params_buildup] = [x - 5*(20-i) for x in x_guess[:-params_buildup]]
+            ub[:-params_buildup] = [x + 5*(20-i) for x in x_guess[:-params_buildup]]
+
+        # Solver for both simultaneously
+        #solver = BuckshotSolver(number_of_params_pos + params_anch + params_buildup, 10)
+        #solver.SetNestedSolver(PowellDirectionalSolver)
+        #solver.SetMapper(Pool().map)
+        ##solver.SetGenerationMonitor(stepmon) # No bucket monitoring
+        #solver.SetEvaluationLimits(evaluations=3200000, generations=10000)
+        #solver.SetTermination(term)
+        #solver.SetStrictRanges(lb, ub)
+        #solver.Solve(lambda x: costx(x[params_anch:-params_buildup], x[0:params_anch], x[-params_buildup], x[-params_buildup+1:]))
+        #x_guess = solver.bestSolution
+
+        # Solver with constant buildup compensation parameters
+        #solver = PowellDirectionalSolver(number_of_params_pos + params_anch)
+        #solver.SetEvaluationLimits(evaluations=3200000, generations=10000)
+        #solver.SetTermination(term)
+        #solver.SetInitialPoints(x_guess[0:-params_buildup])
+        #solver.SetStrictRanges(lb[0:-params_buildup], ub[0:-params_buildup])
+        #solver.Solve(lambda x: costx(x[params_anch:], x[0:params_anch], x_guess[-params_buildup], x_guess[-params_buildup+1:]))
+        #x_guess[0:-params_buildup] = solver.bestSolution
         #for i in range(1, 20):
-        #    solver0 = PowellDirectionalSolver(number_of_params_pos + params_anch + params_buildup)
-        #    solver0.SetInitialPoints(x_guess0)
-        #    solver0.SetStrictRanges(lb, ub)
-        #    solver0.Solve(lambda x: costx(x[params_anch:-params_buildup], x[0:params_anch], x[-params_buildup], x[-params_buildup+1:]))
-        #    x_guess0 = solver0.bestSolution
-        #return x_guess0
+        #    solver = PowellDirectionalSolver(number_of_params_pos + params_anch)
+        #    solver.SetInitialPoints(x_guess[0:-params_buildup])
+        #    solver.SetStrictRanges(lb[0:-params_buildup], ub[0:-params_buildup])
+        #    solver.Solve(lambda x: costx(x[params_anch:], x[0:params_anch], x_guess[-params_buildup], x_guess[-params_buildup+1:]))
+        #    x_guess[0:-params_buildup] = solver.bestSolution
+
+        return x_guess
 
 
     elif method == "SLSQP":
