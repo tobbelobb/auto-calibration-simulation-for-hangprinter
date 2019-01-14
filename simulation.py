@@ -385,7 +385,8 @@ def solve(motor_pos_samp, xyz_of_samp, _cost, method, cx_is_positive=False):
     anchors_est = np.array(
         [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]
     )
-    x_guess = list(anchorsmatrix2vec(anchors_est)) + list(posmatrix2vec(pos_est)) + [0.006, 63, 63, 63, 63]
+    x_guess0 = list(anchorsmatrix2vec(anchors_est)) + list(posmatrix2vec(pos_est)) + [0.006, 63, 63, 63, 63]
+    x_guess = x_guess0
 
     if method == "PowellDirectionalSolver":
         from mystic.termination import (
@@ -404,12 +405,12 @@ def solve(motor_pos_samp, xyz_of_samp, _cost, method, cx_is_positive=False):
         stepmon = VerboseLoggingMonitor(1,2)
 
         target = 1.0
-        #term = Or((COG(generations=10), CollapseAt(target, generations=10)))
         term = COG(generations=10)
+
 
         # Solver with constant buildup compensation parameters
         solver = PowellDirectionalSolver(number_of_params_pos + params_anch)
-        solver.SetEvaluationLimits(evaluations=3200000, generations=10000)
+        solver.SetEvaluationLimits(evaluations=3200, generations=10000)
         solver.SetTermination(term)
         solver.SetInitialPoints(x_guess[0:-params_buildup])
         solver.SetStrictRanges(lb[0:-params_buildup], ub[0:-params_buildup])
@@ -422,8 +423,71 @@ def solve(motor_pos_samp, xyz_of_samp, _cost, method, cx_is_positive=False):
             solver.Solve(lambda x: costx(x[params_anch:], x[0:params_anch], x_guess[-params_buildup], x_guess[-params_buildup+1:]))
             x_guess[0:-params_buildup] = solver.bestSolution
 
-        lb[:-params_buildup] = [x - 100 for x in x_guess[:-params_buildup]]
-        ub[:-params_buildup] = [x + 100 for x in x_guess[:-params_buildup]]
+        count = 0
+        def cost_inner(q):
+            nonlocal count
+            solver = PowellDirectionalSolver(params_buildup)
+            solver.SetEvaluationLimits(evaluations=3200, generations=10000)
+            solver.SetTermination(term)
+            solver.SetInitialPoints(x_guess[-params_buildup:])
+            solver.SetStrictRanges(lb[-params_buildup:], ub[-params_buildup:])
+            solver.Solve(lambda w: costx(q[params_anch:], q[0:params_anch], w[0], w[1:]))
+            res = solver.bestSolution
+            count = count + 1
+            return costx(q[params_anch:], q[0:params_anch], res[0], res[1:])
+
+        solver = PowellDirectionalSolver(number_of_params_pos + params_anch)
+        solver.SetEvaluationLimits(evaluations=3200, generations=10000)
+        solver.SetTermination(term)
+        solver.SetInitialPoints(x_guess[0:-params_buildup])
+        solver.SetStrictRanges(lb[0:-params_buildup], ub[0:-params_buildup])
+        solver.Solve(lambda q: cost_inner(q))
+        x_guess[0:-params_buildup] = solver.bestSolution
+
+        solver = PowellDirectionalSolver(params_buildup)
+        solver.SetEvaluationLimits(evaluations=3200, generations=10000)
+        solver.SetTermination(term)
+        solver.SetInitialPoints(x_guess[-params_buildup:])
+        solver.SetStrictRanges(lb[-params_buildup:], ub[-params_buildup:])
+        solver.Solve(lambda w: costx(x_guess[params_anch:-params_buildup], x_guess[:params_anch], w[0], w[1:]))
+        x_guess[-params_buildup:] = solver.bestSolution
+
+        print("Evaluated cost_inner", count, "times")
+
+        # A cost function that takes positions as an argument, and optimizes the
+        # buildup parameters for those positions
+        #for i in range(0,4):
+        #    def cost_inner(q):
+        #        res = scipy.optimize.minimize(
+        #            lambda w: costx(q[params_anch:], q[0:params_anch], w[0], w[1:]),
+        #            x_guess[-params_buildup:],
+        #            method="SLSQP",
+        #            bounds=list(zip(lb[-params_buildup:], ub[-params_buildup:])),
+        #            options={"disp": True, "ftol": 1e-20, "maxiter": 15000},
+        #        ).x
+        #        return costx(q[params_anch:], q[0:params_anch], res[0], res[1:])
+
+        #    # Optimize positional parameters, but optimize the buildup parameters as well before
+        #    # before calling the cost function
+        #    x_guess[:-params_buildup] = scipy.optimize.minimize(
+        #        lambda q: cost_inner(q),
+        #        x_guess0[:-params_buildup],
+        #        method="SLSQP",
+        #        bounds=list(zip(lb[:-params_buildup], ub[:-params_buildup])),
+        #        options={"disp": True, "ftol": 1e-20, "maxiter": 15000},
+        #    ).x
+
+        #    # Get those super nice buildup params
+        #    x_guess[-params_buildup:] = scipy.optimize.minimize(
+        #            lambda w: costx(x_guess[params_anch:-params_buildup], x_guess[:-params_anch], w[0], w[1:]),
+        #            x_guess0[-params_buildup:],
+        #            method="SLSQP",
+        #            bounds=list(zip(lb[-params_buildup:], ub[-params_buildup:])),
+        #            options={"disp": True, "ftol": 1e-20, "maxiter": 15000},
+        #        ).x
+
+        #lb[:-params_buildup] = [x - 100 for x in x_guess[:-params_buildup]]
+        #ub[:-params_buildup] = [x + 100 for x in x_guess[:-params_buildup]]
 
         ## Solver for both simultaneously
         #solver = BuckshotSolver(number_of_params_pos + params_anch + params_buildup, 10)
@@ -436,14 +500,14 @@ def solve(motor_pos_samp, xyz_of_samp, _cost, method, cx_is_positive=False):
         #solver.Solve(lambda x: costx(x[params_anch:-params_buildup], x[0:params_anch], x[-params_buildup], x[-params_buildup+1:]))
         #x_guess = solver.bestSolution
 
-        for i in range(0, 20):
-            solver = PowellDirectionalSolver(number_of_params_pos + params_anch + params_buildup)
-            solver.SetInitialPoints(x_guess)
-            solver.SetStrictRanges(lb, ub)
-            solver.Solve(lambda x: costx(x[params_anch:-params_buildup], x[0:params_anch], x[-params_buildup], x[-params_buildup+1:]))
-            x_guess = solver.bestSolution
-            lb[:-params_buildup] = [x - 5*(20-i) for x in x_guess[:-params_buildup]]
-            ub[:-params_buildup] = [x + 5*(20-i) for x in x_guess[:-params_buildup]]
+        #for i in range(0, 20):
+        #    solver = PowellDirectionalSolver(number_of_params_pos + params_anch + params_buildup)
+        #    solver.SetInitialPoints(x_guess)
+        #    solver.SetStrictRanges(lb, ub)
+        #    solver.Solve(lambda x: costx(x[params_anch:-params_buildup], x[0:params_anch], x[-params_buildup], x[-params_buildup+1:]))
+        #    x_guess = solver.bestSolution
+        #    lb[:-params_buildup] = [x - 5*(20-i) for x in x_guess[:-params_buildup]]
+        #    ub[:-params_buildup] = [x + 5*(20-i) for x in x_guess[:-params_buildup]]
 
         # Solver for both simultaneously
         #solver = BuckshotSolver(number_of_params_pos + params_anch + params_buildup, 10)
@@ -476,24 +540,24 @@ def solve(motor_pos_samp, xyz_of_samp, _cost, method, cx_is_positive=False):
 
     elif method == "SLSQP":
         # 'SLSQP' is crazy fast but requires good data
-        x_guess0 = scipy.optimize.minimize(
+        x_guess = scipy.optimize.minimize(
             lambda x: costx(x[params_anch:-params_buildup], x[0:params_anch], x[-params_buildup], x[-params_buildup+1:]),
-            x_guess0,
+            x_guess,
             method=method,
             bounds=list(zip(lb, ub)),
             options={"disp": True, "ftol": 1e-20, "maxiter": 150000},
         )
-        return x_guess0.x
+        return x_guess.x
     elif method == "L-BFGS-B":
         ## 'L-BFGS-B' Is crazy fast but doesn't quite land at 0.0000 error
-        x_guess0 = scipy.optimize.minimize(
+        x_guess = scipy.optimize.minimize(
             lambda x: costx(x[params_anch:-params_buildup], x[0:params_anch], x[-params_buildup], x[-params_buildup+1:]),
-            x_guess0,
+            x_guess,
             method=method,
             bounds=list(zip(lb, ub)),
             options={"ftol": 1e-12, "maxiter": 150000},
         )
-        return x_guess0.x
+        return x_guess.x
     else:
         print("Method %s is not supported!" % method)
         sys.exit(1)
