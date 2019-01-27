@@ -355,6 +355,9 @@ def posmatrix2vec(m):
     return np.reshape(m, np.shape(m)[0] * 3)
 
 
+def pre_list(l, num):
+    return np.append(np.append(l[0:params_anch], l[params_anch:params_anch + 3*num]), l[-params_buildup :])
+
 def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
     """Find reasonable positions and anchors given a set of samples.
     """
@@ -363,7 +366,7 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
     ux = np.shape(xyz_of_samp)[0]
     number_of_params_pos = 3 * (u - ux)
 
-    def costx(_cost, posvec, anchvec, spool_buildup_factor, spool_r):
+    def costx(_cost, posvec, anchvec, spool_buildup_factor, spool_r, u):
         """Identical to cost, except the shape of inputs and capture of samp, xyz_of_samp, ux, and u
 
         Parameters
@@ -377,7 +380,7 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
             pos[0:ux] = xyz_of_samp
         pos[ux:] = np.reshape(posvec, (u - ux, 3))
         return _cost(
-            anchors, pos, motor_pos_samp, spool_buildup_factor, np.array(spool_r)
+            anchors, pos, motor_pos_samp[:u], spool_buildup_factor, np.array(spool_r)
         )
 
     l_long = 4000.0
@@ -397,33 +400,63 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
     lb = (
         [
             -l_long,  # A_ay > -4000.0
-            -l_short,  # A_az > -1700.0
-            0.0,  # A_bx > 0
-            0.0,  # A_by > 0
-            -l_short,  # A_bz > -1700.0
+            -300.0,  # A_az > -300.0
+            300.0,  # A_bx > 300
+            300.0,  # A_by > 300
+            -300.0,  # A_bz > -300.0
             -l_long,  # A_cx > -4000
-            0.0,  # A_cy > 0
-            -l_short,  # A_cz > -1700.0
-            0.0,  # A_dz > 0
+            300.0,  # A_cy > 300
+            -300.0,  # A_cz > -300.0
+            1000.0,  # A_dz > 1000
         ]
         + [-l_short, -l_short, data_z_min] * (u - ux)
-        + [0.005, 64.5, 64.5, 64.5, 64.5]
+        + [0.00005, 64.6, 64.6, 64.6, 64.6]
     )
     ub = (
         [
-            0.0,  # A_ay < 0
-            l_short,  # A_az < 1700
+            500.0,  # A_ay < 500
+            200.0,  # A_az < 200
             l_long,  # A_bx < 4000
             l_long,  # A_by < 4000
-            l_short,  # A_bz < 1700
-            0.0,  # A_cx < 0
+            200.0,  # A_bz < 200
+            -300.0,  # A_cx < -300
             l_long,  # A_cy < 4000.0
-            l_short,  # A_cz < 1700
+            200.0,  # A_cz < 200
             l_long,  # A_dz < 4000.0
         ]
         + [l_short, l_short, 2 * l_short] * (u - ux)
         + [0.01, 67, 67, 67, 67]
     )
+    #lb = (
+    #    [
+    #        -999999.0,  # A_ay > -4000.0
+    #        -999999.0,  # A_az > -300.0
+    #        -999999.0,  # A_bx > 300
+    #        -999999.0,  # A_by > 300
+    #        -999999.0,  # A_bz > -300.0
+    #        -999999.0,  # A_cx > -4000
+    #        -999999.0,  # A_cy > 300
+    #        -999999.0,  # A_cz > -300.0
+    #        -999999.0,  # A_dz > 1000
+    #    ]
+    #    + [-999999.0, -999999.0, -999999.0] * (u - ux)
+    #    + [0.0001, 60.5, 60.5, 60.5, 60.5]
+    #)
+    #ub = (
+    #    [
+    #        999999.9,  # A_ay < 500
+    #        999999.9,  # A_az < 200
+    #        999999.9,  # A_bx < 4000
+    #        999999.9,  # A_by < 4000
+    #        999999.9,  # A_bz < 200
+    #        999999.9,  # A_cx < -300
+    #        999999.9,  # A_cy < 4000.0
+    #        999999.9,  # A_cz < 200
+    #        999999.9,  # A_dz < 4000.0
+    #    ]
+    #    + [999999.0, 999999.0, 999999.0] * (u - ux)
+    #    + [100, 670, 670, 670, 670]
+    #)
 
     # If the user has input xyz data, then signs should be ok anyways
     if ux > 2:
@@ -469,6 +502,7 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
                 x[0:params_anch],
                 x[-params_buildup],
                 x[-params_buildup + 1 :],
+                u
             )
         )
         x_guess = solver.bestSolution
@@ -496,6 +530,7 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
                     x[0:params_anch],
                     x[-params_buildup],
                     x[-params_buildup + 1 :],
+                    u
                 )
             )
             x_guess = solver.bestSolution
@@ -506,6 +541,7 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
                     x[0:params_anch],
                     x[-params_buildup],
                     x[-params_buildup + 1 :],
+                    u
                 ),
                 x_guess,
                 method="SLSQP",
@@ -515,20 +551,139 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
 
         return x_guess
 
+    elif method == "differentialEvolutionSolver":
+        from mystic.solvers import DifferentialEvolutionSolver2
+        from mystic.monitors import VerboseMonitor
+        from mystic.termination import VTR, ChangeOverGeneration, And, Or
+
+        def constraints(x):
+            global disp
+            num = 12
+            if constraints.counter == 10:
+                constraints.counter = 0
+                constraints.disp = True
+            else:
+                constraints.counter += 1
+                constraints.disp = False
+            x_guess = scipy.optimize.minimize(
+                lambda x: costx(
+                    cost_for_pos_samp,
+                    x[params_anch:params_anch + num*3],
+                    x[0:params_anch],
+                    x[-params_buildup],
+                    x[-params_buildup + 1 :],
+                    num
+                ),
+                pre_list(x,num),
+                method="SLSQP",
+                bounds=list(zip(pre_list(lb,num), pre_list(ub,num))),
+                options={"disp": constraints.disp, "ftol": 1e-10, "maxiter": 250},
+            ).x
+            x[: params_anch + num*3] = x_guess[: params_anch + num*3]
+            x[-params_buildup:]    = x_guess[-params_buildup :]
+            return x
+        constraints.disp = False
+        constraints.counter = 0
+
+        x_guess = scipy.optimize.minimize(
+            lambda x: costx(
+                cost_for_pos_samp,
+                x[params_anch : -params_buildup],
+                x[: params_anch],
+                x[-params_buildup],
+                x[-params_buildup + 1 :],
+                u
+            ),
+            x_guess,
+            method="SLSQP",
+            bounds=list(zip(lb, ub)),
+            options={"disp": True, "ftol": 1e-10, "maxiter": 15000},
+        ).x
+        lb[:-params_buildup] = (
+            x_guess[:-params_buildup] - 50
+        )
+        ub[:-params_buildup] = (
+            x_guess[:-params_buildup] + 50
+        )
+
+        stop = VTR(1e-12)
+        ndim = number_of_params_pos + params_anch + params_buildup
+        npop = 2*ndim
+        stepmon = VerboseMonitor(10)
+        solver = DifferentialEvolutionSolver2(ndim,npop)
+        solver.SetRandomInitialPoints(lb, ub)
+        solver.SetStrictRanges(lb, ub)
+        #solver.SetConstraints(constraints)
+        solver.SetGenerationMonitor(stepmon)
+        solver.enable_signal_handler() # Handle Ctrl+C gracefully. Be restartable
+        solver.Solve(lambda x: costx(
+                cost_sqsqsq_for_pos_samp,
+                x[params_anch:-params_buildup],
+                x[0:params_anch],
+                x[-params_buildup],
+                x[-params_buildup + 1 :],
+                u
+            ), termination=stop)
+
+        # use monitor to retrieve results information
+        iterations = len(stepmon)
+        cost = stepmon.y[-1]
+        print("Generation %d has best Chi-Squared: %f" % (iterations, cost))
+        return solver.Solution()
+
+
     elif method == "PowellDirectionalSolver":  # Method 1
         from mystic.solvers import PowellDirectionalSolver
         from mystic.termination import Or, CollapseAt, CollapseAs
         from mystic.termination import ChangeOverGeneration as COG
+        from mystic.monitors import VerboseMonitor
+        from mystic.termination import VTR, ChangeOverGeneration, And, Or
+        from mystic.penalty import linear_inequality, linear_equality, quadratic_equality, quadratic_inequality
+        from mystic.constraints import as_constraint
 
-        term = COG(generations=100)
+
+        big_ndim = number_of_params_pos + params_anch + params_buildup
+
+
+        def constraints(x):
+            num = 18
+            if constraints.counter == 10:
+                constraints.counter = 0
+                constraints.disp = True
+            else:
+                constraints.counter += 1
+                constraints.disp = False
+            x_guess = scipy.optimize.minimize(
+                lambda x: costx(
+                    cost_for_pos_samp,
+                    x[params_anch:params_anch + num*3],
+                    x[0:params_anch],
+                    x[-params_buildup],
+                    x[-params_buildup + 1 :],
+                    num
+                ),
+                pre_list(x,num),
+                method="SLSQP",
+                bounds=list(zip(pre_list(lb,num), pre_list(ub,num))),
+                options={"disp": constraints.disp, "ftol": 1e-10, "maxiter": 20},
+            ).x
+            x[: params_anch + num*3] = x_guess[: params_anch + num*3]
+            x[-params_buildup:]    = x_guess[-params_buildup :]
+            return x
+        constraints.disp = False
+        constraints.counter = 0
+
+        term = Or(VTR(1e-12), COG(20))
         # Solver for both simultaneously
-        solver = PowellDirectionalSolver(
-            number_of_params_pos + params_anch + params_buildup
-        )
-        solver.SetEvaluationLimits(evaluations=3200000, generations=10000)
+        solver = PowellDirectionalSolver(big_ndim)
+        #solver.SetConstraints(constraints)
+        solver.enable_signal_handler() # Handle Ctrl+C gracefully. Be restartable
+        solver.SetGenerationMonitor(VerboseMonitor(5))
+        solver.SetEvaluationLimits(evaluations=32000, generations=10000)
         solver.SetTermination(term)
         solver.SetInitialPoints(x_guess)
         solver.SetStrictRanges(lb, ub)
+        solver.enable_signal_handler() # Handle Ctrl+C gracefully. Be restartable
         solver.Solve(
             lambda x: costx(
                 cost_sqsq_for_pos_samp,
@@ -536,22 +691,27 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
                 x[0:params_anch],
                 x[-params_buildup],
                 x[-params_buildup + 1 :],
+                u
             )
         )
         x_guess = solver.bestSolution
-        for i in range(1, 10):
+        for i in range(1, 20):
             print(".")
             solver = PowellDirectionalSolver(
                 number_of_params_pos + params_anch + params_buildup
             )
             solver.SetInitialPoints(x_guess)
+            solver.enable_signal_handler() # Handle Ctrl+C gracefully. Be restartable
+            solver.SetGenerationMonitor(VerboseMonitor(5))
+            solver.SetEvaluationLimits(evaluations=10000, generations=10000)
+            solver.SetTermination(term)
             lb[:-params_buildup] = (
                 x_guess[:-params_buildup]
-                - np.abs(x_guess[:-params_buildup] - lb[:-params_buildup]) / 1.5
+                - np.abs(x_guess[:-params_buildup] - lb[:-params_buildup]) / 1.2
             )
             ub[:-params_buildup] = (
                 x_guess[:-params_buildup]
-                + np.abs(x_guess[:-params_buildup] - ub[:-params_buildup]) / 1.5
+                + np.abs(x_guess[:-params_buildup] - ub[:-params_buildup]) / 1.2
             )
             solver.SetStrictRanges(lb, ub)
             solver.Solve(
@@ -561,9 +721,94 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
                     x[0:params_anch],
                     x[-params_buildup],
                     x[-params_buildup + 1 :],
+                    u
                 )
             )
             x_guess = solver.bestSolution
+
+        #for i in range(1, 20):
+        #    print("#")
+        #    solver = PowellDirectionalSolver(
+        #        number_of_params_pos + params_anch + params_buildup
+        #    )
+        #    solver.SetInitialPoints(x_guess)
+        #    solver.enable_signal_handler() # Handle Ctrl+C gracefully. Be restartable
+        #    solver.SetTermination(term)
+        #    solver.SetGenerationMonitor(VerboseMonitor(5))
+        #    solver.SetEvaluationLimits(evaluations=10000, generations=10000)
+        #    lb[:-params_buildup] = (
+        #        x_guess[:-params_buildup]
+        #        - np.abs(x_guess[:-params_buildup] - lb[:-params_buildup]) / 1.2
+        #    )
+        #    ub[:-params_buildup] = (
+        #        x_guess[:-params_buildup]
+        #        + np.abs(x_guess[:-params_buildup] - ub[:-params_buildup]) / 1.2
+        #    )
+        #    solver.SetStrictRanges(lb, ub)
+        #    solver.Solve(
+        #        lambda x: costx(
+        #            cost_sq_for_pos_samp,
+        #            x[params_anch:-params_buildup],
+        #            x[0:params_anch],
+        #            x[-params_buildup],
+        #            x[-params_buildup + 1 :],
+        #            u
+        #        )
+        #    )
+        #    x_guess = solver.bestSolution
+
+        #for i in range(1, 8):
+        #    print("*")
+        #    solver = PowellDirectionalSolver(
+        #        number_of_params_pos + params_anch + params_buildup
+        #    )
+        #    solver.SetInitialPoints(x_guess)
+        #    solver.enable_signal_handler() # Handle Ctrl+C gracefully. Be restartable
+        #    solver.SetTermination(term)
+        #    solver.SetGenerationMonitor(VerboseMonitor(5))
+        #    solver.SetEvaluationLimits(evaluations=10000, generations=10000)
+        #    lb[:-params_buildup] = (
+        #        x_guess[:-params_buildup]
+        #        - np.abs(x_guess[:-params_buildup] - lb[:-params_buildup]) / 1.2
+        #    )
+        #    ub[:-params_buildup] = (
+        #        x_guess[:-params_buildup]
+        #        + np.abs(x_guess[:-params_buildup] - ub[:-params_buildup]) / 1.2
+        #    )
+        #    solver.SetStrictRanges(lb, ub)
+        #    solver.Solve(
+        #        lambda x: costx(
+        #            cost_for_pos_samp,
+        #            x[params_anch:-params_buildup],
+        #            x[0:params_anch],
+        #            x[-params_buildup],
+        #            x[-params_buildup + 1 :],
+        #            u
+        #        )
+        #    )
+        #    x_guess = solver.bestSolution
+
+        stop = VTR(1e-12)
+        ndim = number_of_params_pos + params_anch + params_buildup
+        npop = 1
+        stepmon = VerboseMonitor(10)
+        from mystic.solvers import DifferentialEvolutionSolver2
+        solver = DifferentialEvolutionSolver2(ndim,npop)
+        solver.SetRandomInitialPoints(lb, ub)
+        solver.SetStrictRanges(lb, ub)
+        #solver.SetConstraints(constraints)
+        solver.SetGenerationMonitor(stepmon)
+        solver.enable_signal_handler() # Handle Ctrl+C gracefully. Be restartable
+        solver.Solve(lambda x: costx(
+                cost_sqsqsq_for_pos_samp,
+                x[params_anch:-params_buildup],
+                x[0:params_anch],
+                x[-params_buildup],
+                x[-params_buildup + 1 :],
+                u
+            ), termination=stop)
+
+        x_guess = solver.bestSolution
 
         return x_guess
 
@@ -575,16 +820,23 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
                 x[0:params_anch],
                 x[-params_buildup],
                 x[-params_buildup + 1 :],
+                u
             ),
             x_guess,
             method=method,
             bounds=list(zip(lb, ub)),
-            options={"disp": True, "ftol": 1e-10, "maxiter": 15000},
+            options={"disp": True, "ftol": 1e-20, "maxiter": 150000},
         ).x
         return x_guess
 
     elif method == "L-BFGS-B":  # Method 0
+        count = 0
+        disp = False
         for i in range(0, 50):
+            if i % 10 == 0:
+                disp = True
+            else:
+                disp = False
             x_guess = scipy.optimize.minimize(
                 lambda x: costx(
                     cost_sqsqsq_for_pos_samp,
@@ -592,13 +844,18 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
                     x[0:params_anch],
                     x[-params_buildup],
                     x[-params_buildup + 1 :],
+                    u
                 ),
                 x_guess,
                 method="L-BFGS-B",
                 bounds=list(zip(lb, ub)),
-                options={"disp": False, "ftol": 1e-20, "maxiter": 150000},
+                options={"disp": disp, "ftol": 1e-20, "maxiter": 15000},
             ).x
         for i in range(0, 50):
+            if i % 10 == 0:
+                disp = True
+            else:
+                disp = False
             x_guess = scipy.optimize.minimize(
                 lambda x: costx(
                     cost_sqsq_for_pos_samp,
@@ -606,13 +863,18 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
                     x[0:params_anch],
                     x[-params_buildup],
                     x[-params_buildup + 1 :],
+                    u
                 ),
                 x_guess,
                 method="L-BFGS-B",
                 bounds=list(zip(lb, ub)),
-                options={"disp": False, "ftol": 1e-20, "maxiter": 150000},
+                options={"disp": disp, "ftol": 1e-20, "maxiter": 15000},
             ).x
         for i in range(0, 150):
+            if i % 10 == 0:
+                disp = True
+            else:
+                disp = False
             x_guess = scipy.optimize.minimize(
                 lambda x: costx(
                     cost_sq_for_pos_samp,
@@ -620,11 +882,12 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
                     x[0:params_anch],
                     x[-params_buildup],
                     x[-params_buildup + 1 :],
+                    u
                 ),
                 x_guess,
                 method="L-BFGS-B",
                 bounds=list(zip(lb, ub)),
-                options={"disp": False, "ftol": 1e-20, "maxiter": 150000},
+                options={"disp": disp, "ftol": 1e-20, "maxiter": 15000},
             ).x
         return x_guess
 
@@ -695,7 +958,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-m",
         "--method",
-        help='Available methods are L-BFGS-B, PowellDirectionalSolver (requires a library called Mystic), SLSQP, and a combo of PowellDirectionalSolver and SLSQP. As a shorthand, you can use 0, 1, 2, or 3 for referring to the four methods respectively. Specify "combo" or "3" if you want the combo. Specify "all" or "4" if you want the script to run all four methods (default).',
+        help='Available methods are L-BFGS-B, PowellDirectionalSolver (requires a library called Mystic), SLSQP, a combo of PowellDirectionalSolver and SLSQP, and differentialEvolutionSolver. As a shorthand, you can use 0, 1, 2, or 3 for referring to the four methods respectively. Specify "combo" or "3" if you want the combo. Specify "all" or "4" if you want the script to run all four methods (default). Specify "differentialEvolutionSolver" or "5" if you want the differential evolution solver (slow).',
         default="PowellDirectionalSolver",
     )
     parser.add_argument(
@@ -728,6 +991,8 @@ if __name__ == "__main__":
         args["method"] = "combo"
     if args["method"] == "4":
         args["method"] = "all"
+    if args["method"] == "5":
+        args["method"] = "differentialEvolutionSolver"
     print(args["method"])
 
     # Rough approximations from manual measuring.
@@ -779,58 +1044,58 @@ if __name__ == "__main__":
         motor_pos_samp = motor_pos_samp.reshape((int(np.size(motor_pos_samp) / 4), 4))
     else:
         # You might want to manually replace this with your collected data
-        # motor_pos_samp = np.array(
-        #        [
-        #            [2185.65, 1565.88, 901.40, 3497.24, ], # First collected data. Seems to not work...
-        #            [13289.12, 16251.47, 9180.44, -35.29, ],
-        #            [19102.38, 19737.29, 10106.74, -34.05, ],
-        #            [15736.09, 12568.62, 7477.67, 6882.47, ],
-        #            [11833.54, 3475.36, 7092.05, 15260.72, ],
-        #            [10453.83, -8991.93, 7252.55, 24340.97, ],
-        #            [12342.05, -286.95, 3259.66, 16596.90, ],
-        #            [12341.57, 4064.08, -840.31, 8899.52, ],
-        #            [14965.81, 4064.08, -6865.62, 2128.97, ],
-        #            [16145.44, -5181.89, -15089.08, 2098.95, ],
-        #            [11140.04, -5179.96, -9597.86, 7383.00, ],
-        #            [5789.15, -11239.36, -4038.70, 13199.07, ],
-        #            [-7015.04, -14092.20, 5979.81, 10498.90, ],
-        #            [-10983.31, -10043.28, 6839.74, 2878.31, ],
-        #            [-7130.69, -10049.42, 6989.61, 9051.27, ],
-        #            [-3162.74, -5991.19, 2751.78, 7802.40, ],
-        #            [2492.55, -45.91, 361.06, 6290.42, ],
-        #        ]
-        #        )
-        motor_pos_samp = np.array(
-            [
-                #[    -0.0  ,     -0.0  ,     -0.0  ,     -0.0  ],
-                [ -1559.522,  35112.937,  11052.954,  -8872.595], # Simulated data w no fuzz
-                [ 15947.869,  44648.943,  25081.529, -20058.220],
-                [  6380.425,  19670.677, -16066.842,   4584.479],
-                [ 12033.385,  23821.841,  -5934.602, -15049.766],
-                [ 25842.555,  34790.088,  13138.384, -28972.382],
-                [ 26651.024,  14774.897, -26368.609,   8830.624],
-                [ 30623.769,  19265.113, -11595.884,  -8872.595],
-                [ 41211.318,  30931.858,   9866.130, -20058.220],
-                [-22455.217,  16219.845,  15070.811,   4584.479],
-                [ -9771.808,  20604.526,  19861.334, -15049.766],
-                [ 10871.057,  32057.528,  32119.331, -28972.382],
-                [ -9961.996,  31610.402,   5267.875,   8830.624],
-                [  6498.393,   5934.960,   6498.393, -22456.334],
-                [ 21632.763,  20205.165,  21632.763, -44870.348],
-                [ 22498.630,  -7698.495,  -4589.645,   4584.479],
-                [ 26731.305,   -604.054,   2676.888, -15049.766],
-                [ 37871.408,  15355.987,  18863.009, -28972.382],
-                [ -9961.996,   6924.497,  31248.118,   8830.624],
-                [ -1559.522,  12086.068,  34967.311,  -8872.595],
-                [ 15947.869,  25035.973,  44996.327, -20058.220],
-                [  6380.425, -14551.956,  20602.771,   4584.479],
-                [ 12033.385,  -6018.578,  24965.465, -15049.766],
-                [ 25842.555,  11621.846,  36374.371, -28972.382],
-                [ 26651.024, -30082.168,  17780.735,   8830.624],
-                [ 30623.769, -15504.967,  22351.992,  -8872.595],
-                [ 41211.318,   5888.695,  34181.575, -20058.220]
-            ]
-        )
+         motor_pos_samp = np.array(
+                [
+                    [  2185.65,-   1565.88,    901.40,- 3497.24, ], # First collected data. B and D had wrong signs
+                    [ 13289.12,-  16251.47,   9180.44,- -35.29, ],
+                    [ 19102.38,-  19737.29,  10106.74,- -34.05, ],
+                    [ 15736.09,-  12568.62,   7477.67,- 6882.47, ],
+                    [ 11833.54,-   3475.36,   7092.05,- 15260.72, ],
+                    [ 10453.83,-  -8991.93,   7252.55,- 24340.97, ],
+                    [ 12342.05,-   -286.95,   3259.66,- 16596.90, ],
+                    [ 12341.57,-   4064.08,   -840.31,- 8899.52, ],
+                    [ 14965.81,-   4064.08,  -6865.62,- 2128.97, ],
+                    [ 16145.44,-  -5181.89, -15089.08,- 2098.95, ],
+                    [ 11140.04,-  -5179.96,  -9597.86,- 7383.00, ],
+                    [  5789.15,- -11239.36,  -4038.70,- 13199.07, ],
+                    [ -7015.04,- -14092.20,   5979.81,- 10498.90, ],
+                    [-10983.31,- -10043.28,   6839.74,- 2878.31, ],
+                    [ -7130.69,- -10049.42,   6989.61,- 9051.27, ],
+                    [ -3162.74,-  -5991.19,   2751.78,- 7802.40, ],
+                    [  2492.55,-    -45.91,    361.06,- 6290.42, ],
+                ]
+                )
+        #motor_pos_samp = np.array(
+        #    [
+        #        #[    -0.0  ,     -0.0  ,     -0.0  ,     -0.0  ],
+        #        [ -1559.522,  35112.937,  11052.954,  -8872.595], # Simulated data w no fuzz
+        #        [ 15947.869,  44648.943,  25081.529, -20058.220],
+        #        [  6380.425,  19670.677, -16066.842,   4584.479],
+        #        [ 12033.385,  23821.841,  -5934.602, -15049.766],
+        #        [ 25842.555,  34790.088,  13138.384, -28972.382],
+        #        [ 26651.024,  14774.897, -26368.609,   8830.624],
+        #        [ 30623.769,  19265.113, -11595.884,  -8872.595],
+        #        [ 41211.318,  30931.858,   9866.130, -20058.220],
+        #        [-22455.217,  16219.845,  15070.811,   4584.479],
+        #        [ -9771.808,  20604.526,  19861.334, -15049.766],
+        #        [ 10871.057,  32057.528,  32119.331, -28972.382],
+        #        [ -9961.996,  31610.402,   5267.875,   8830.624],
+        #        [  6498.393,   5934.960,   6498.393, -22456.334],
+        #        [ 21632.763,  20205.165,  21632.763, -44870.348],
+        #        [ 22498.630,  -7698.495,  -4589.645,   4584.479],
+        #        [ 26731.305,   -604.054,   2676.888, -15049.766],
+        #        [ 37871.408,  15355.987,  18863.009, -28972.382],
+        #        #[ -9961.996,   6924.497,  31248.118,   8830.624],
+        #        #[ -1559.522,  12086.068,  34967.311,  -8872.595],
+        #        #[ 15947.869,  25035.973,  44996.327, -20058.220],
+        #        #[  6380.425, -14551.956,  20602.771,   4584.479],
+        #        #[ 12033.385,  -6018.578,  24965.465, -15049.766],
+        #        #[ 25842.555,  11621.846,  36374.371, -28972.382],
+        #        #[ 26651.024, -30082.168,  17780.735,   8830.624],
+        #        #[ 30623.769, -15504.967,  22351.992,  -8872.595],
+        #        [ 41211.318,   5888.695,  34181.575, -20058.220]
+        #    ]
+        #)
 
     u = np.shape(motor_pos_samp)[0]
     ux = np.shape(xyz_of_samp)[0]
@@ -946,8 +1211,11 @@ if __name__ == "__main__":
             solution = solution2
             print("Winner method was SLSQP")
         if the_cost3 < the_cost0 and the_cost3 < the_cost1 and the_cost3 < the_cost2:
-            solution = solution3
             print("Winner method was PowellDirectionalSolver+SLSQP combo")
+            solution = solution3
+        print("Average solution: ")
+
+        print((solution0 + solution1 + solution2 + solution3) / 4)
     else:
         solution = solve(
             motor_pos_samp, xyz_of_samp, args["method"], args["cx_is_positive"]
@@ -998,7 +1266,7 @@ if __name__ == "__main__":
         print_anch_err(sol_anch, anchors)
         print("Method: %s" % args["method"])
         print("RUN TIME : {0}".format(st2 - st1))
-        # example_data_pos = np.array([[-1000., -1000.,  1000.],
+        #example_data_pos = np.array([[-1000., -1000.,  1000.],
         #                             [-1000., -1000.,  2000.],
         #                             [-1000.,     0.,     0.],
         #                             [-1000.,     0.,  1000.],
@@ -1015,19 +1283,20 @@ if __name__ == "__main__":
         #                             [    0.,  1000.,     0.],
         #                             [    0.,  1000.,  1000.],
         #                             [    0.,  1000.,  2000.],
-        #                             [ 1000., -1000.,     0.],
-        #                             [ 1000., -1000.,  1000.],
-        #                             [ 1000., -1000.,  2000.],
-        #                             [ 1000.,     0.,     0.],
-        #                             [ 1000.,     0.,  1000.],
-        #                             [ 1000.,     0.,  2000.],
-        #                             [ 1000.,  1000.,     0.],
-        #                             [ 1000.,  1000.,  1000.],
+        #                             #[ 1000., -1000.,     0.],
+        #                             #[ 1000., -1000.,  1000.],
+        #                             #[ 1000., -1000.,  2000.],
+        #                             #[ 1000.,     0.,     0.],
+        #                             #[ 1000.,     0.,  1000.],
+        #                             #[ 1000.,     0.,  2000.],
+        #                             #[ 1000.,  1000.,     0.],
+        #                             #[ 1000.,  1000.,  1000.],
         #                             [ 1000.,  1000.,  2000.]])
         np.set_printoptions(precision=6)
         np.set_printoptions(suppress=True)  # No scientific notation
-        print("pos err: ")
-        # print(sol_pos - example_data_pos)
+        #print("pos err: ")
+        #print(sol_pos - example_data_pos)
+        print(sol_pos)
         print(
             "spool_buildup_compensation err: %1.6f" % (sol_spool_buildup_factor - 0.008)
         )
