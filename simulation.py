@@ -607,9 +607,9 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
         from mystic.monitors import VerboseMonitor
         from mystic.termination import VTR, ChangeOverGeneration, And, Or
 
-        stop = Or(VTR(1e-12), ChangeOverGeneration(0.0000001, 500))
+        stop = Or(VTR(1e-12), ChangeOverGeneration(0.0000001, 5000))
         ndim = number_of_params_pos + params_anch + params_buildup
-        npop = 15*ndim
+        npop = 30*ndim
         stepmon = VerboseMonitor(100)
         solver = DifferentialEvolutionSolver2(ndim,npop)
         solver.SetRandomInitialPoints(lb, ub)
@@ -640,6 +640,7 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
         except ImportError:
             from mystic.pools import SerialPool as Pool
         from mystic.termination import VTR, ChangeOverGeneration as COG
+        from mystic.termination import Or
         from mystic.termination import NormalizedChangeOverGeneration as NCOG
         from mystic.monitors import LoggingMonitor, VerboseMonitor, Monitor
         from klepto.archives import dir_archive
@@ -650,12 +651,12 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
         # the local solvers
         from mystic.solvers import PowellDirectionalSolver
         sprayer = BuckshotSolver
-        #term = Or(VTR(1e-9), COG(0.01, 50))
+        term = Or(VTR(1e-9), COG(0.01, 50))
         seeker = PowellDirectionalSolver(ndim)
         seeker.SetConstraints(constraints)
-        #seeker.SetTermination(term)
-        solver.SetEvaluationLimits(evaluations=320000, generations=10000)
-        #seeker.SetStrictRanges(lb, ub)
+        seeker.SetTermination(term)
+        seeker.SetEvaluationLimits(evaluations=320000, generations=10000)
+        seeker.SetStrictRanges(lb, ub)
         seeker.enable_signal_handler() # Handle Ctrl+C gracefully. Be restartable
         npts = 3 # number of solvers
         _map = Pool().map
@@ -681,6 +682,8 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
             monitor=LoggingMonitor(1))#,
             #constraints=constraints)
         searcher._summarize()
+        xyz = self.sampler.Samples()
+
         xyz = np.hstack((xyz, searcher.Samples())) # extract results
         x, z = xyz.T[:,:-1], xyz.T[:,-1]  # get params (x) and cost (z)
         best_cost = 99999999
@@ -714,7 +717,7 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
         solver.SetStrictRanges(lb, ub)
         solver.Solve(
             lambda x: costx(
-                cost_sqsqsq_for_pos_samp,
+                cost_sqsq_for_pos_samp,
                 x[params_anch:-params_buildup],
                 x[0:params_anch],
                 x[-params_buildup],
@@ -1249,36 +1252,36 @@ if __name__ == "__main__":
         print_anch_err(sol_anch, anchors)
         print("Method: %s" % args["method"])
         print("RUN TIME : {0}".format(st2 - st1))
-        #example_data_pos = np.array([[-1000., -1000.,  1000.],
-        #                             [-1000., -1000.,  2000.],
-        #                             [-1000.,     0.,     0.],
-        #                             [-1000.,     0.,  1000.],
-        #                             [-1000.,     0.,  2000.],
-        #                             [-1000.,  1000.,     0.],
-        #                             [-1000.,  1000.,  1000.],
-        #                             [-1000.,  1000.,  2000.],
-        #                             [    0., -1000.,     0.],
-        #                             [    0., -1000.,  1000.],
-        #                             [    0., -1000.,  2000.],
-        #                             [-1000., -1000.,     0.],
-        #                             [    0.,     0.,  1000.],
-        #                             [    0.,     0.,  2000.],
-        #                             [    0.,  1000.,     0.],
-        #                             [    0.,  1000.,  1000.],
-        #                             [    0.,  1000.,  2000.],
-        #                             #[ 1000., -1000.,     0.],
-        #                             #[ 1000., -1000.,  1000.],
-        #                             #[ 1000., -1000.,  2000.],
-        #                             #[ 1000.,     0.,     0.],
-        #                             #[ 1000.,     0.,  1000.],
-        #                             #[ 1000.,     0.,  2000.],
-        #                             #[ 1000.,  1000.,     0.],
-        #                             #[ 1000.,  1000.,  1000.],
-        #                             [ 1000.,  1000.,  2000.]])
+        example_data_pos = np.array([[-1000., -1000.,  1000.],
+                                     [-1000., -1000.,  2000.],
+                                     [-1000.,     0.,     0.],
+                                     [-1000.,     0.,  1000.],
+                                     [-1000.,     0.,  2000.],
+                                     [-1000.,  1000.,     0.],
+                                     [-1000.,  1000.,  1000.],
+                                     [-1000.,  1000.,  2000.],
+                                     [    0., -1000.,     0.],
+                                     [    0., -1000.,  1000.],
+                                     [    0., -1000.,  2000.],
+                                     [-1000., -1000.,     0.],
+                                     [    0.,     0.,  1000.],
+                                     [    0.,     0.,  2000.],
+                                     [    0.,  1000.,     0.],
+                                     [    0.,  1000.,  1000.],
+                                     [    0.,  1000.,  2000.],
+                                     [ 1000., -1000.,     0.],
+                                     [ 1000., -1000.,  1000.],
+                                     [ 1000., -1000.,  2000.],
+                                     [ 1000.,     0.,     0.],
+                                     [ 1000.,     0.,  1000.],
+                                     [ 1000.,     0.,  2000.],
+                                     [ 1000.,  1000.,     0.],
+                                     [ 1000.,  1000.,  1000.],
+                                     [ 1000.,  1000.,  2000.]])
         np.set_printoptions(precision=6)
         np.set_printoptions(suppress=True)  # No scientific notation
-        #print("pos err: ")
-        #print(sol_pos - example_data_pos)
+        print("pos err: ")
+        print(sol_pos - example_data_pos)
         print(sol_pos)
         print(
             "spool_buildup_compensation err: %1.6f" % (sol_spool_buildup_factor - 0.008)
