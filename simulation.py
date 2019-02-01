@@ -249,12 +249,12 @@ def cost_sq(anchors, pos, samp):
 def cost_for_pos_samp(anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r):
     """
     For all samples sum
-    (Sample value if anchor position A and cartesian position x were guessed   - actual sample)^2
+    |Sample value if anchor position A and cartesian position x were guessed   - actual sample|
 
-    (sqrt((A_ax-x_i)^2 + (A_ay-y_i)^2 + (A_az-z_i)^2) - sqrt(A_ax^2 + A_ay^2 + A_az^2) - motor_pos_to_samp(t_ia))^2 +
-    (sqrt((A_bx-x_i)^2 + (A_by-y_i)^2 + (A_bz-z_i)^2) - sqrt(A_bx^2 + A_by^2 + A_bz^2) - motor_pos_to_samp(t_ib))^2 +
-    (sqrt((A_cx-x_i)^2 + (A_cy-y_i)^2 + (A_cz-z_i)^2) - sqrt(A_cx^2 + A_cy^2 + A_cz^2) - motor_pos_to_samp(t_ic))^2 +
-    (sqrt((A_dx-x_i)^2 + (A_dy-y_i)^2 + (A_dz-z_i)^2) - sqrt(A_dx^2 + A_dy^2 + A_dz^2) - motor_pos_to_samp(t_id))^2
+    |sqrt((A_ax-x_i)^2 + (A_ay-y_i)^2 + (A_az-z_i)^2) - sqrt(A_ax^2 + A_ay^2 + A_az^2) - motor_pos_to_samp(t_ia)| +
+    |sqrt((A_bx-x_i)^2 + (A_by-y_i)^2 + (A_bz-z_i)^2) - sqrt(A_bx^2 + A_by^2 + A_bz^2) - motor_pos_to_samp(t_ib)| +
+    |sqrt((A_cx-x_i)^2 + (A_cy-y_i)^2 + (A_cz-z_i)^2) - sqrt(A_cx^2 + A_cy^2 + A_cz^2) - motor_pos_to_samp(t_ic)| +
+    |sqrt((A_dx-x_i)^2 + (A_dy-y_i)^2 + (A_dz-z_i)^2) - sqrt(A_dx^2 + A_dy^2 + A_dz^2) - motor_pos_to_samp(t_id)|
     """
     return np.sum(
         np.abs(
@@ -610,7 +610,7 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
         seeker = PowellDirectionalSolver(ndim)
         seeker.SetConstraints(constraints)
         seeker.SetTermination(term)
-        seeker.SetEvaluationLimits(evaluations=320000, generations=10000)
+        seeker.SetEvaluationLimits(evaluations=3200000, generations=100000)
         seeker.SetStrictRanges(lb, ub)
         seeker.enable_signal_handler()  # Handle Ctrl+C gracefully. Be restartable
         npts = 3  # number of solvers
