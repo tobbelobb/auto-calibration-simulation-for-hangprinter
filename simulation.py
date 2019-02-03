@@ -6,11 +6,6 @@ import scipy.optimize
 import argparse
 import timeit
 import sys
-import decimal
-decimal.getcontext().prec = 50
-Dec = decimal.Decimal
-#def Dec(x):
-#    return x
 
 # Axes indexing
 A = 0
@@ -204,22 +199,22 @@ def motor_pos_samples_with_spool_buildup_compensation(
 
 def motor_pos_samples_to_line_length_with_buildup_compensation(
     motor_samps,
-    spool_buildup_factor=Dec(0.008*1000.0),  # Qualified first guess for 0.5 mm line
-    spool_r=np.array([Dec(65.0), Dec(65.0), Dec(65.0), Dec(65.0)]),
-    spool_to_motor_gearing_factor=Dec(12.75),  # HP4 default (255/20)
-    mech_adv=np.array([Dec(2.0), Dec(2.0), Dec(2.0), Dec(2.0)]),  # HP4 default
-    number_of_lines_per_spool=np.array([Dec(1.0), Dec(1.0), Dec(1.0), Dec(1.0)]),  # HP4 default
+    spool_buildup_factor=0.008*1000.0,  # Qualified first guess for 0.5 mm line
+    spool_r=np.array([65.0, 65.0, 65.0, 65.0]),
+    spool_to_motor_gearing_factor=12.75,  # HP4 default (255/20)
+    mech_adv=np.array([2.0, 2.0, 2.0, 2.0]),  # HP4 default
+    number_of_lines_per_spool=np.array([1.0, 1.0, 1.0, 1.0]),  # HP4 default
 ):
-    spool_buildup_factor /= Dec(1000.0)
+    spool_buildup_factor /= 1000.0
     # Buildup per line times lines. Minus sign because more line in air means less line on spool
     c1 = -mech_adv * number_of_lines_per_spool * spool_buildup_factor
 
     # we now want to use degrees instead of steps as unit of rotation
     # so setting 360 where steps per motor rotation is in firmware buildup compensation algorithms
     degrees_per_unit_times_r = (
-        spool_to_motor_gearing_factor * mech_adv * Dec(360.0)
-    ) / (Dec(2.0) * Dec(np.pi))
-    k0 = Dec(2.0) * degrees_per_unit_times_r / c1
+        spool_to_motor_gearing_factor * mech_adv * 360.0
+    ) / (2.0 * np.pi)
+    k0 = 2.0 * degrees_per_unit_times_r / c1
 
     return (((motor_samps / k0) + spool_r) ** 2 - spool_r * spool_r) / c1
 
@@ -346,10 +341,10 @@ def anchorsvec2matrix(anchorsvec):
     """ Create a 4x3 anchors matrix from 6 element anchors vector.
     """
     #anchors = np.array(np.zeros((4, 3)))
-    anchors = np.array([[Dec(0.0),Dec(anchorsvec[0]), Dec(anchorsvec[1])],
-                        [Dec(anchorsvec[2]), Dec(anchorsvec[3]), Dec(anchorsvec[4])],
-                        [Dec(anchorsvec[5]), Dec(anchorsvec[6]), Dec(anchorsvec[7])],
-                        [Dec(0.0), Dec(0.0), Dec(anchorsvec[8])],
+    anchors = np.array([[(0.0),(anchorsvec[0]), (anchorsvec[1])],
+                        [(anchorsvec[2]), (anchorsvec[3]), (anchorsvec[4])],
+                        [(anchorsvec[5]), (anchorsvec[6]), (anchorsvec[7])],
+                        [(0.0), (0.0), (anchorsvec[8])],
                         ])
     return anchors
 
@@ -401,28 +396,14 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
         x : [A_ay A_az A_bx A_by A_bz A_cx A_cy A_cz A_dz
                x1   y1   z1   x2   y2   z2   ...  xu   yu   zu
         """
-        #spool_r = np.array(spool_r)
-        if(not type(posvec[0]) == decimal.Decimal):
-            posvec = np.array([Dec(pos) for pos in posvec])
-        if(not type(anchvec[0]) == decimal.Decimal):
-            anchvec = np.array([Dec(anch) for anch in anchvec])
-        if(not type(spool_buildup_factor) == decimal.Decimal):
-            spool_buildup_factor = Dec(spool_buildup_factor)
-        if(not type(spool_r[0]) == decimal.Decimal):
-            spool_r = np.array([Dec(r) for r in spool_r])
+        spool_r = np.array(spool_r)
         anchors = anchorsvec2matrix(anchvec)
-        #pos = np.zeros(u*3)
-        #pos = np.array([Dec(p) for p in pos])
-        #pos.reshape((u, 3))
-        #if np.size(xyz_of_samp) != 0:
-        #    pos[0:ux] = xyz_of_samp
+        pos = np.zeros(u*3)
+        pos = np.array([(p) for p in pos])
+        pos.reshape((u, 3))
+        if np.size(xyz_of_samp) != 0:
+            pos[0:ux] = xyz_of_samp
         pos = np.reshape(posvec, (u - ux, 3))
-        if(not type(pos[0][0]) == decimal.Decimal
-           or not type(anchors[0][0]) == decimal.Decimal
-           or not type(spool_buildup_factor) == decimal.Decimal
-           or not type(spool_r[0]) == decimal.Decimal):
-            print("Fail")
-            exit(0)
         return _cost(
             anchors,
             pos,
@@ -636,7 +617,7 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
         solver.enable_signal_handler()  # Handle Ctrl+C gracefully. Be restartable
         solver.Solve(
             lambda x: costx(
-                cost_for_pos_samp,
+                cost_sq_for_pos_samp,
                 x[params_anch:-params_buildup],
                 x[0:params_anch],
                 x[-params_buildup],
@@ -677,17 +658,17 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
 
         sprayer = BuckshotSolver
         seeker = PowellDirectionalSolver(ndim)
-        seeker.SetGenerationMonitor(VerboseMonitor(5))
-        seeker.SetConstraints(constraints)
+        #seeker.SetGenerationMonitor(VerboseMonitor(5))
+        #seeker.SetConstraints(constraints)
         #seeker.SetTermination(Or(VTR(1e-4), COG(0.01, 20)))
         #seeker.SetEvaluationLimits(evaluations=3200000, generations=100000)
         seeker.SetStrictRanges(lb, ub)
         #seeker.enable_signal_handler()  # Handle Ctrl+C. Be restartable
-        npts = 4  # number of solvers
+        npts = 10  # number of solvers
         _map = Pool().map
-        retry = 0  # max consectutive iteration retries without a cache 'miss'
-        tol = 0  # rounding precision
-        mem = 0  # cache rounding precision
+        retry = 1  # max consectutive iteration retries without a cache 'miss'
+        tol = 8  # rounding precision
+        mem = 1  # cache rounding precision
         from mystic.search import Searcher
 
         searcher = Searcher(npts, retry, tol, mem, _map, None, sprayer, seeker)
@@ -706,7 +687,6 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
             bounds=list(zip(lb, ub)),
             stop=stop,
             monitor=VerboseMonitor(1),
-            callback=lambda x: print(self.Minima()),
         )  # ,
         # constraints=constraints)
         searcher._summarize()
@@ -779,22 +759,20 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
 
     elif method == "L-BFGS-B":
         best_x = scipy.optimize.minimize(
-            lambda x: float(costx(
+            lambda x: costx(
                 cost_sq_for_pos_samp,
                 x[params_anch:-params_buildup],
                 x[0:params_anch],
                 x[-params_buildup],
                 x[-params_buildup + 1 :],
                 u,
-            )),
+            ),
             x_guess,
             method="L-BFGS-B",
             bounds=list(zip(lb, ub)),
             options={"disp": True, "ftol": 1e-40, "gtol": 1e-40, "maxiter": 15000000, "maxfun": 10000000},
         ).x
-        if(not type(best_x[0]) == float):
-            best_x = np.array([float(pos) for pos in best_x])
-        return x_guess
+        return best_x
 
     else:
         print("Method %s is not supported!" % method)
@@ -805,15 +783,15 @@ def print_copypasteable(anch, spool_buildup_factor, spool_r):
     print(
         "\nM669 A0.0:%.2f:%.2f B%.2f:%.2f:%.2f C%.2f:%.2f:%.2f D%.2f Q%.6f R%.3f:%.3f:%.3f:%.3f"
         % (
-            Dec(1000.0)*anch[A, Y],
-            Dec(1000.0)*anch[A, Z],
-            Dec(1000.0)*anch[B, X],
-            Dec(1000.0)*anch[B, Y],
-            Dec(1000.0)*anch[B, Z],
-            Dec(1000.0)*anch[C, X],
-            Dec(1000.0)*anch[C, Y],
-            Dec(1000.0)*anch[C, Z],
-            Dec(1000.0)*anch[D, Z],
+            (1000.0)*anch[A, Y],
+            (1000.0)*anch[A, Z],
+            (1000.0)*anch[B, X],
+            (1000.0)*anch[B, Y],
+            (1000.0)*anch[B, Z],
+            (1000.0)*anch[C, X],
+            (1000.0)*anch[C, Y],
+            (1000.0)*anch[C, Z],
+            (1000.0)*anch[D, Z],
             spool_buildup_factor/1000.0,
             spool_r[A],
             spool_r[B],
@@ -824,15 +802,15 @@ def print_copypasteable(anch, spool_buildup_factor, spool_r):
 
 
 def print_anch_err(sol_anch, anchors):
-    print("\nErr_A_Y: %9.3f" % (Dec(1000.0)*(sol_anch[A, Y] - Dec(anchors[A, Y]))))
-    print("Err_A_Z: %9.3f" %   (Dec(1000.0)*(sol_anch[A, Z] - Dec(anchors[A, Z]))))
-    print("Err_B_X: %9.3f" %   (Dec(1000.0)*(sol_anch[B, X] - Dec(anchors[B, X]))))
-    print("Err_B_Y: %9.3f" %   (Dec(1000.0)*(sol_anch[B, Y] - Dec(anchors[B, Y]))))
-    print("Err_B_Z: %9.3f" %   (Dec(1000.0)*(sol_anch[B, Z] - Dec(anchors[B, Z]))))
-    print("Err_C_X: %9.3f" %   (Dec(1000.0)*(sol_anch[C, X] - Dec(anchors[C, X]))))
-    print("Err_C_Y: %9.3f" %   (Dec(1000.0)*(sol_anch[C, Y] - Dec(anchors[C, Y]))))
-    print("Err_C_Z: %9.3f" %   (Dec(1000.0)*(sol_anch[C, Z] - Dec(anchors[C, Z]))))
-    print("Err_D_Z: %9.3f" %   (Dec(1000.0)*(sol_anch[D, Z] - Dec(anchors[D, Z]))))
+    print("\nErr_A_Y: %9.3f" % ((1000.0)*(sol_anch[A, Y] - (anchors[A, Y]))))
+    print("Err_A_Z: %9.3f" %   ((1000.0)*(sol_anch[A, Z] - (anchors[A, Z]))))
+    print("Err_B_X: %9.3f" %   ((1000.0)*(sol_anch[B, X] - (anchors[B, X]))))
+    print("Err_B_Y: %9.3f" %   ((1000.0)*(sol_anch[B, Y] - (anchors[B, Y]))))
+    print("Err_B_Z: %9.3f" %   ((1000.0)*(sol_anch[B, Z] - (anchors[B, Z]))))
+    print("Err_C_X: %9.3f" %   ((1000.0)*(sol_anch[C, X] - (anchors[C, X]))))
+    print("Err_C_Y: %9.3f" %   ((1000.0)*(sol_anch[C, Y] - (anchors[C, Y]))))
+    print("Err_C_Z: %9.3f" %   ((1000.0)*(sol_anch[C, Z] - (anchors[C, Z]))))
+    print("Err_D_Z: %9.3f" %   ((1000.0)*(sol_anch[D, Z] - (anchors[D, Z]))))
 
 
 class Store_as_array(argparse._StoreAction):
@@ -1027,11 +1005,11 @@ if __name__ == "__main__":
     ux = np.shape(xyz_of_samp)[0]
 
 
-    motor_pos_samp = np.array([Dec(r) for r in motor_pos_samp.reshape(u*4)]).reshape((u, 4))
-    xyz_of_samp = np.array([Dec(r) for r in xyz_of_samp])
-    motor_pos_samp /= Dec(1000.0)
+    motor_pos_samp = np.array([(r) for r in motor_pos_samp.reshape(u*4)]).reshape((u, 4))
+    xyz_of_samp = np.array([(r) for r in xyz_of_samp])
+    motor_pos_samp /= (1000.0)
     if xyz_of_samp.size is not 0:
-        xyz_of_samp /= Dec(1000.0)
+        xyz_of_samp /= (1000.0)
 
     if ux > u:
         print("Error: You have more xyz positions than samples!")
@@ -1039,8 +1017,6 @@ if __name__ == "__main__":
         sys.exit(1)
 
     def computeCost(solution):
-        if(not type(solution[0]) == decimal.Decimal):
-            solution = np.array([Dec(pos) for pos in solution])
         anch = anchorsvec2matrix(solution[0:params_anch])
         spool_buildup_factor = solution[-params_buildup]
         spool_r = solution[-params_buildup + 1 :]
@@ -1061,7 +1037,7 @@ if __name__ == "__main__":
             pos,
             motor_pos_samp,
             spool_buildup_factor,
-            spool_r,
+            np.array(spool_r),
         )
 
     ndim = 3 * (u - ux) + params_anch + params_buildup
@@ -1077,7 +1053,7 @@ if __name__ == "__main__":
         def __init__(self, name, solution):
             self.name = name
             self.solution = solution
-            if solution.any():
+            if np.array(solution).any():
                 self.cost = computeCost(solution)
                 print("%s has cost %f" % (self.name, self.cost))
                 self.anch = anchorsvec2matrix(self.solution[0:params_anch])
@@ -1133,8 +1109,8 @@ if __name__ == "__main__":
 
     print("number of samples: %d" % u)
     print("input xyz coords:  %d" % (3 * ux))
-    print("total cost:        %3.9f" % the_cand.cost)
-    print("cost per sample:   %3.9f" % (the_cand.cost / u))
+    print("total cost:        %3.9f" % the_cand.cost) # err
+    print("cost per sample:   %3.9f" % (the_cand.cost / u)) # err
 
     if (u + 3 * ux) < params_anch:
         print("\nError: Lack of data detected.\n       Collect more samples.")
@@ -1152,7 +1128,7 @@ if __name__ == "__main__":
     print_copypasteable(
         the_cand.anch, the_cand.spool_buildup_factor, the_cand.spool_r
     )
-    print("Spool buildup factor:", the_cand.spool_buildup_factor/1000.0)
+    print("Spool buildup factor:", the_cand.spool_buildup_factor/1000.0) # err
     print("Spool radii:", the_cand.spool_r)
     if args["debug"]:
         print_anch_err(the_cand.anch, anchors)
