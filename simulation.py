@@ -6,6 +6,11 @@ import scipy.optimize
 import argparse
 import timeit
 import sys
+import decimal
+decimal.getcontext().prec = 50
+Dec = decimal.Decimal
+#def Dec(x):
+#    return x
 
 # Axes indexing
 A = 0
@@ -66,7 +71,9 @@ def irregular_anchors(l, fuzz_percentage=0.2, az=-120.0, bz=-120.0, cz=-120.0):
     # fuzz[C, Z] = 0 # Fixated
     # fuzz[D, X] = 0 # Fixated
     # fuzz[D, Y] = 0 # Fixated
-    fuzz[D, Z] = l * fuzz_percentage * np.random.rand()  # usually higher than A is long
+    fuzz[D, Z] = (
+        l * fuzz_percentage * np.random.rand()
+    )  # usually higher than A is long
     return symmetric_anchors(l, az, bz, cz) + fuzz
 
 
@@ -140,9 +147,9 @@ def samples_relative_to_origin_no_fuzz(anchors, pos):
 
     Parameters
     ----------
-    anchors : 4x3 matrix of anhcor positions in mm
+    anchors : 4x3 matrix of anhcor positions in m
     pos : ux3 matrix of positions
-    fuzz: Maximum measurment error per motor in mm
+    fuzz: Maximum measurment error per motor in m
     """
     # pos[:,np.newaxis,:]: ux1x3
     # Broadcasting happens u times and we get ux4x3 output before norm operation
@@ -150,10 +157,12 @@ def samples_relative_to_origin_no_fuzz(anchors, pos):
     return line_lengths - np.linalg.norm(anchors, 2, 1)
 
 
+
+
 def motor_pos_samples_with_spool_buildup_compensation(
     anchors,
     pos,
-    spool_buildup_factor=0.008,  # Qualified first guess for 0.5 mm line
+    spool_buildup_factor=0.008*1000.0,  # Qualified first guess for 0.5 mm line
     spool_r_in_origin=np.array([65.0, 65.0, 65.0, 65.0]),
     spool_to_motor_gearing_factor=12.75,
     mech_adv=np.array([2.0, 2.0, 2.0, 2.0]),
@@ -161,6 +170,10 @@ def motor_pos_samples_with_spool_buildup_compensation(
 ):
     """What motor positions (in degrees) motors would be at
     """
+
+    # Problem scaling
+    spool_buildup_factor /= 1000.0
+
     # Assure np.array type
     spool_r_in_origin = np.array(spool_r_in_origin)
     mech_adv = np.array(mech_adv)
@@ -173,16 +186,17 @@ def motor_pos_samples_with_spool_buildup_compensation(
 
     # we now want to use degrees instead of steps as unit of rotation
     # so setting 360 where steps per motor rotation is in firmware buildup compensation algorithms
-    degrees_per_unit_times_r = (spool_to_motor_gearing_factor * mech_adv * 360.0) / (
-        2.0 * np.pi
-    )
+    degrees_per_unit_times_r = (
+        spool_to_motor_gearing_factor * mech_adv * 360.0
+    ) / (2.0 * np.pi)
     k0 = 2.0 * degrees_per_unit_times_r / k2
 
     line_lengths_origin = np.linalg.norm(anchors, 2, 1)
 
     relative_line_lengths = samples_relative_to_origin_no_fuzz(anchors, pos)
     motor_positions = k0 * (
-        np.sqrt(spool_r_in_origin_sq + relative_line_lengths * k2) - spool_r_in_origin
+        np.sqrt(spool_r_in_origin_sq + relative_line_lengths * k2)
+        - spool_r_in_origin
     )
 
     return motor_positions
@@ -190,21 +204,22 @@ def motor_pos_samples_with_spool_buildup_compensation(
 
 def motor_pos_samples_to_line_length_with_buildup_compensation(
     motor_samps,
-    spool_buildup_factor=0.008,  # Qualified first guess for 0.5 mm line
-    spool_r=np.array([65.0, 65.0, 65.0, 65.0]),
-    spool_to_motor_gearing_factor=12.75,  # HP4 default (255/20)
-    mech_adv=np.array([2.0, 2.0, 2.0, 2.0]),  # HP4 default
-    number_of_lines_per_spool=np.array([1.0, 1.0, 1.0, 1.0]),  # HP4 default
+    spool_buildup_factor=Dec(0.008*1000.0),  # Qualified first guess for 0.5 mm line
+    spool_r=np.array([Dec(65.0), Dec(65.0), Dec(65.0), Dec(65.0)]),
+    spool_to_motor_gearing_factor=Dec(12.75),  # HP4 default (255/20)
+    mech_adv=np.array([Dec(2.0), Dec(2.0), Dec(2.0), Dec(2.0)]),  # HP4 default
+    number_of_lines_per_spool=np.array([Dec(1.0), Dec(1.0), Dec(1.0), Dec(1.0)]),  # HP4 default
 ):
+    spool_buildup_factor /= Dec(1000.0)
     # Buildup per line times lines. Minus sign because more line in air means less line on spool
-    c1 = -1.0 * mech_adv * number_of_lines_per_spool * spool_buildup_factor
+    c1 = -mech_adv * number_of_lines_per_spool * spool_buildup_factor
 
     # we now want to use degrees instead of steps as unit of rotation
     # so setting 360 where steps per motor rotation is in firmware buildup compensation algorithms
-    degrees_per_unit_times_r = (spool_to_motor_gearing_factor * mech_adv * 360.0) / (
-        2.0 * np.pi
-    )
-    k0 = 2.0 * degrees_per_unit_times_r / c1
+    degrees_per_unit_times_r = (
+        spool_to_motor_gearing_factor * mech_adv * Dec(360.0)
+    ) / (Dec(2.0) * Dec(np.pi))
+    k0 = Dec(2.0) * degrees_per_unit_times_r / c1
 
     return (((motor_samps / k0) + spool_r) ** 2 - spool_r * spool_r) / c1
 
@@ -243,10 +258,14 @@ def cost_sq(anchors, pos, samp):
     (sqrt((A_cx-x_i)^2 + (A_cy-y_i)^2 + (A_cz-z_i)^2) - sqrt(A_cx^2 + A_cy^2 + A_cz^2) - t_ic)^2 +
     (sqrt((A_dx-x_i)^2 + (A_dy-y_i)^2 + (A_dz-z_i)^2) - sqrt(A_dx^2 + A_dy^2 + A_dz^2) - t_id)^2
     """
-    return np.sum(pow((samples_relative_to_origin_no_fuzz(anchors, pos) - samp), 2))
+    return np.sum(
+        pow((samples_relative_to_origin_no_fuzz(anchors, pos) - samp), 2)
+    )
 
 
-def cost_for_pos_samp(anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r):
+def cost_for_pos_samp(
+    anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r
+):
     """
     For all samples sum
     |Sample value if anchor position A and cartesian position x were guessed   - actual sample|
@@ -256,6 +275,7 @@ def cost_for_pos_samp(anchors, pos, motor_pos_samp, spool_buildup_factor, spool_
     |sqrt((A_cx-x_i)^2 + (A_cy-y_i)^2 + (A_cz-z_i)^2) - sqrt(A_cx^2 + A_cy^2 + A_cz^2) - motor_pos_to_samp(t_ic)| +
     |sqrt((A_dx-x_i)^2 + (A_dy-y_i)^2 + (A_dz-z_i)^2) - sqrt(A_dx^2 + A_dy^2 + A_dz^2) - motor_pos_to_samp(t_id)|
     """
+
     return np.sum(
         np.abs(
             samples_relative_to_origin_no_fuzz(anchors, pos)
@@ -266,7 +286,9 @@ def cost_for_pos_samp(anchors, pos, motor_pos_samp, spool_buildup_factor, spool_
     )
 
 
-def cost_sq_for_pos_samp(anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r):
+def cost_sq_for_pos_samp(
+    anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r
+):
     """
     Sum of squares
 
@@ -278,6 +300,7 @@ def cost_sq_for_pos_samp(anchors, pos, motor_pos_samp, spool_buildup_factor, spo
     (sqrt((A_cx-x_i)^2 + (A_cy-y_i)^2 + (A_cz-z_i)^2) - sqrt(A_cx^2 + A_cy^2 + A_cz^2) - motor_pos_to_samp(t_ic))^2 +
     (sqrt((A_dx-x_i)^2 + (A_dy-y_i)^2 + (A_dz-z_i)^2) - sqrt(A_dx^2 + A_dy^2 + A_dz^2) - motor_pos_to_samp(t_id))^2
     """
+    #print(type(anchors[0][0]))
     return np.sum(
         pow(
             samples_relative_to_origin_no_fuzz(anchors, pos)
@@ -289,7 +312,9 @@ def cost_sq_for_pos_samp(anchors, pos, motor_pos_samp, spool_buildup_factor, spo
     )
 
 
-def cost_sqsq_for_pos_samp(anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r):
+def cost_sqsq_for_pos_samp(
+    anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r
+):
     """Sum of squared squares"""
     return np.sum(
         pow(
@@ -320,16 +345,12 @@ def cost_sqsqsq_for_pos_samp(
 def anchorsvec2matrix(anchorsvec):
     """ Create a 4x3 anchors matrix from 6 element anchors vector.
     """
-    anchors = np.array(np.zeros((4, 3)))
-    anchors[A, Y] = anchorsvec[0]
-    anchors[A, Z] = anchorsvec[1]
-    anchors[B, X] = anchorsvec[2]
-    anchors[B, Y] = anchorsvec[3]
-    anchors[B, Z] = anchorsvec[4]
-    anchors[C, X] = anchorsvec[5]
-    anchors[C, Y] = anchorsvec[6]
-    anchors[C, Z] = anchorsvec[7]
-    anchors[D, Z] = anchorsvec[8]
+    #anchors = np.array(np.zeros((4, 3)))
+    anchors = np.array([[Dec(0.0),Dec(anchorsvec[0]), Dec(anchorsvec[1])],
+                        [Dec(anchorsvec[2]), Dec(anchorsvec[3]), Dec(anchorsvec[4])],
+                        [Dec(anchorsvec[5]), Dec(anchorsvec[6]), Dec(anchorsvec[7])],
+                        [Dec(0.0), Dec(0.0), Dec(anchorsvec[8])],
+                        ])
     return anchors
 
 
@@ -380,13 +401,34 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
         x : [A_ay A_az A_bx A_by A_bz A_cx A_cy A_cz A_dz
                x1   y1   z1   x2   y2   z2   ...  xu   yu   zu
         """
+        #spool_r = np.array(spool_r)
+        if(not type(posvec[0]) == decimal.Decimal):
+            posvec = np.array([Dec(pos) for pos in posvec])
+        if(not type(anchvec[0]) == decimal.Decimal):
+            anchvec = np.array([Dec(anch) for anch in anchvec])
+        if(not type(spool_buildup_factor) == decimal.Decimal):
+            spool_buildup_factor = Dec(spool_buildup_factor)
+        if(not type(spool_r[0]) == decimal.Decimal):
+            spool_r = np.array([Dec(r) for r in spool_r])
         anchors = anchorsvec2matrix(anchvec)
-        pos = np.zeros((u, 3))
-        if np.size(xyz_of_samp) != 0:
-            pos[0:ux] = xyz_of_samp
-        pos[ux:] = np.reshape(posvec, (u - ux, 3))
+        #pos = np.zeros(u*3)
+        #pos = np.array([Dec(p) for p in pos])
+        #pos.reshape((u, 3))
+        #if np.size(xyz_of_samp) != 0:
+        #    pos[0:ux] = xyz_of_samp
+        pos = np.reshape(posvec, (u - ux, 3))
+        if(not type(pos[0][0]) == decimal.Decimal
+           or not type(anchors[0][0]) == decimal.Decimal
+           or not type(spool_buildup_factor) == decimal.Decimal
+           or not type(spool_r[0]) == decimal.Decimal):
+            print("Fail")
+            exit(0)
         return _cost(
-            anchors, pos, motor_pos_samp[:u], spool_buildup_factor, np.array(spool_r)
+            anchors,
+            pos,
+            motor_pos_samp[:u],
+            spool_buildup_factor,
+            spool_r,
         )
 
     l_long = 4000.0
@@ -403,66 +445,70 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
     #         |y| < 1700
     # -20.0 <  z  < 3400.0
     # Define bounds
+    # lb = (
+    #   [
+    #       -l_long,  # A_ay > -4000.0
+    #       -300.0,  # A_az > -300.0
+    #       300.0,  # A_bx > 300
+    #       300.0,  # A_by > 300
+    #       -300.0,  # A_bz > -300.0
+    #       -l_long,  # A_cx > -4000
+    #       300.0,  # A_cy > 300
+    #       -300.0,  # A_cz > -300.0
+    #       1000.0,  # A_dz > 1000
+    #   ]
+    #   + [-l_short, -l_short, data_z_min] * (u - ux)
+    #   + [0.00005, 64.6, 64.6, 64.6, 64.6]
+    # )
+    # ub = (
+    #   [
+    #       500.0,  # A_ay < 500
+    #       200.0,  # A_az < 200
+    #       l_long,  # A_bx < 4000
+    #       l_long,  # A_by < 4000
+    #       200.0,  # A_bz < 200
+    #       -300.0,  # A_cx < -300
+    #       l_long,  # A_cy < 4000.0
+    #       200.0,  # A_cz < 200
+    #       l_long,  # A_dz < 4000.0
+    #   ]
+    #   + [l_short, l_short, 2 * l_short] * (u - ux)
+    #   + [0.01, 67, 67, 67, 67]
+    # )
     lb = (
-       [
-           -l_long,  # A_ay > -4000.0
-           -300.0,  # A_az > -300.0
-           300.0,  # A_bx > 300
-           300.0,  # A_by > 300
-           -300.0,  # A_bz > -300.0
-           -l_long,  # A_cx > -4000
-           300.0,  # A_cy > 300
-           -300.0,  # A_cz > -300.0
-           1000.0,  # A_dz > 1000
-       ]
-       + [-l_short, -l_short, data_z_min] * (u - ux)
-       + [0.00005, 64.6, 64.6, 64.6, 64.6]
+        [
+            0.001*-2000.0,  # A_ay > -2000.0
+            0.001*-200.0,  # A_az > -200.0
+            0.001*1000.0,  # A_bx > 1000
+            0.001*900.0,  # A_by > 900
+            0.001*-200.0,  # A_bz > -200.0
+            0.001*-2000.0,  # A_cx > -2000
+            0.001*700.0,  # A_cy > 700
+            0.001*-200.0,  # A_cz > -200.0
+            0.001*2300.0,  # A_dz > 2300
+        ]
+        + [0.001*-1000.0,
+           0.001* -1000.0,
+           0.001* -30.0] * (u - ux)
+        + [0.005*1000, 64.6, 64.6, 64.6, 64.6]
     )
     ub = (
-       [
-           500.0,  # A_ay < 500
-           200.0,  # A_az < 200
-           l_long,  # A_bx < 4000
-           l_long,  # A_by < 4000
-           200.0,  # A_bz < 200
-           -300.0,  # A_cx < -300
-           l_long,  # A_cy < 4000.0
-           200.0,  # A_cz < 200
-           l_long,  # A_dz < 4000.0
-       ]
-       + [l_short, l_short, 2 * l_short] * (u - ux)
-       + [0.01, 67, 67, 67, 67]
+        [
+            0.001*-1600.0,  # A_ay < -1600
+            0.001*0.0,  # A_az < 0
+            0.001*1600.0,  # A_bx < 1600
+            0.001*1500.0,  # A_by < 1500
+            0.001*0.0,  # A_bz < 200
+            0.001*-1300.0,  # A_cx < -1300
+            0.001*1000.0,  # A_cy < 1000.0
+            0.001*0.0,  # A_cz < 0
+            0.001*2700.0,  # A_dz < 2700.0
+        ]
+        + [0.001*1000.0,
+           0.001* 1000.0,
+           0.001* 2000.0] * (u - ux)
+        + [0.01*1000, 66, 66, 66, 66]
     )
-    #lb = (
-    #    [
-    #        -2000.0,  # A_ay > -2000.0
-    #        -200.0,  # A_az > -200.0
-    #        1000.0,  # A_bx > 1000
-    #        900.0,  # A_by > 900
-    #        -200.0,  # A_bz > -200.0
-    #        -2000.0,  # A_cx > -2000
-    #        700.0,  # A_cy > 700
-    #        -200.0,  # A_cz > -200.0
-    #        2300.0,  # A_dz > 2300
-    #    ]
-    #    + [-l_short, -l_short, data_z_min] * (u - ux)
-    #    + [0.00005, 64.6, 64.6, 64.6, 64.6]
-    #)
-    #ub = (
-    #    [
-    #        -1600.0,  # A_ay < -1600
-    #        0.0,  # A_az < 0
-    #        1600.0,  # A_bx < 1600
-    #        1500.0,  # A_by < 1500
-    #        0.0,  # A_bz < 200
-    #        -1300.0,  # A_cx < -1300
-    #        1000.0,  # A_cy < 1000.0
-    #        0.0,  # A_cz < 0
-    #        2700.0,  # A_dz < 2700.0
-    #    ]
-    #    + [l_short, l_short, 2 * l_short] * (u - ux)
-    #    + [0.01, 67, 67, 67, 67]
-    #)
     # lb = (
     #    [
     #        -999999.0,  # A_ay > -4000.0
@@ -529,36 +575,57 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
             # If both B and C wound in line
             # Then position of measurement has positive Y coordinate
             elif (
-                motor_pos_samp[samp_num][B] < 0.0 and motor_pos_samp[samp_num][C] < 0.0
+                motor_pos_samp[samp_num][B] < 0.0
+                and motor_pos_samp[samp_num][C] < 0.0
             ):
                 x[params_anch + samp_num * 3 + Y] = np.abs(
                     x[params_anch + samp_num * 3 + Y]
                 )
             # If both A and B wound in line
             # Then pos of meas has positive X coord
-            if motor_pos_samp[samp_num][A] < 0.0 and motor_pos_samp[samp_num][B] < 0.0:
+            if (
+                motor_pos_samp[samp_num][A] < 0.0
+                and motor_pos_samp[samp_num][B] < 0.0
+            ):
                 x[params_anch + samp_num * 3 + X] = np.abs(
                     x[params_anch + samp_num * 3 + X]
                 )
             # If both A and C wound in line
             # Then pos of meas has negative X coord
             elif (
-                motor_pos_samp[samp_num][A] < 0.0 and motor_pos_samp[samp_num][C] < 0.0
+                motor_pos_samp[samp_num][A] < 0.0
+                and motor_pos_samp[samp_num][C] < 0.0
             ):
                 x[params_anch + samp_num * 3 + X] = -np.abs(
                     x[params_anch + samp_num * 3 + X]
                 )
+            # No sample was made with more positive x coordinate than B anchor
+            if (x[params_anch + samp_num * 3 + X] > x[2]):
+                x[params_anch + samp_num * 3 + X] = x[2]
+            # No sample was made with more negative x coordinate than C anchor
+            elif (x[params_anch + samp_num * 3 + X] < x[5]):
+                x[params_anch + samp_num * 3 + X] = x[5]
+            # No sample was made with more negative y coordinate than A anchor
+            if (x[params_anch + samp_num * 3 + Y] < x[0]):
+                x[params_anch + samp_num * 3 + Y] = x[0]
+            # No sample was made with more positive y coordinate than B and C anchor
+            elif (x[params_anch + samp_num * 3 + Y] > x[3] and x[params_anch + samp_num * 3 + Y] > x[6]):
+                x[params_anch + samp_num * 3 + Y] = max(x[3], x[6])
+            # No sample was made with more positive z coordinate than D anchor
+            if (x[params_anch + samp_num * 3 + Z] > x[8]):
+                x[params_anch + samp_num * 3 + Z] = x[8]
+
         return x
 
     if method == "differentialEvolutionSolver":
         from mystic.solvers import DifferentialEvolutionSolver2
         from mystic.monitors import VerboseMonitor
         from mystic.termination import VTR, ChangeOverGeneration, And, Or
-        from mystic.strategy import Best1Exp
+        from mystic.strategy import Best1Exp, Best1Bin
 
         stop = Or(VTR(1e-12), ChangeOverGeneration(0.0000001, 5000))
         ndim = number_of_params_pos + params_anch + params_buildup
-        npop = 30 * ndim
+        npop = 3
         stepmon = VerboseMonitor(100)
         solver = DifferentialEvolutionSolver2(ndim, npop)
 
@@ -569,7 +636,7 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
         solver.enable_signal_handler()  # Handle Ctrl+C gracefully. Be restartable
         solver.Solve(
             lambda x: costx(
-                cost_sq_for_pos_samp,
+                cost_for_pos_samp,
                 x[params_anch:-params_buildup],
                 x[0:params_anch],
                 x[-params_buildup],
@@ -577,7 +644,7 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
                 u,
             ),
             termination=stop,
-            strategy=Best1Exp,
+            strategy=Best1Bin,
         )
 
         # use monitor to retrieve results information
@@ -609,18 +676,18 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
         from mystic.solvers import PowellDirectionalSolver
 
         sprayer = BuckshotSolver
-        term = Or(VTR(1e-12), COG(0.0001, 50))
         seeker = PowellDirectionalSolver(ndim)
+        seeker.SetGenerationMonitor(VerboseMonitor(5))
         seeker.SetConstraints(constraints)
-        seeker.SetTermination(term)
-        seeker.SetEvaluationLimits(evaluations=3200000, generations=100000)
+        #seeker.SetTermination(Or(VTR(1e-4), COG(0.01, 20)))
+        #seeker.SetEvaluationLimits(evaluations=3200000, generations=100000)
         seeker.SetStrictRanges(lb, ub)
-        seeker.enable_signal_handler()  # Handle Ctrl+C gracefully. Be restartable
-        npts = 3  # number of solvers
+        #seeker.enable_signal_handler()  # Handle Ctrl+C. Be restartable
+        npts = 4  # number of solvers
         _map = Pool().map
-        retry = 1  # max consectutive iteration retries without a cache 'miss'
-        tol = 12  # rounding precision
-        mem = 1  # cache rounding precision
+        retry = 0  # max consectutive iteration retries without a cache 'miss'
+        tol = 0  # rounding precision
+        mem = 0  # cache rounding precision
         from mystic.search import Searcher
 
         searcher = Searcher(npts, retry, tol, mem, _map, None, sprayer, seeker)
@@ -638,10 +705,12 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
             ),
             bounds=list(zip(lb, ub)),
             stop=stop,
-            monitor=LoggingMonitor(1),
+            monitor=VerboseMonitor(1),
+            callback=lambda x: print(self.Minima()),
         )  # ,
         # constraints=constraints)
         searcher._summarize()
+        print(searcher.Minima())
         return np.array(min(searcher.Minima(), key=searcher.Minima().get))
 
     elif method == "PowellDirectionalSolver":
@@ -652,74 +721,16 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
         from mystic.termination import VTR, And, Or
 
         big_ndim = number_of_params_pos + params_anch + params_buildup
+        x_guess = np.array(x_guess).astype(np.float64)
 
-        term = Or(VTR(1e-20), COG(0.01, 50))
         # Solver for both simultaneously
         solver = PowellDirectionalSolver(big_ndim)
         solver.enable_signal_handler()  # Handle Ctrl+C gracefully. Be restartable
         solver.SetConstraints(constraints)
         solver.SetGenerationMonitor(VerboseMonitor(5))
         solver.SetEvaluationLimits(evaluations=3200000, generations=100000)
-        solver.SetTermination(term)
+        solver.SetTermination(Or(VTR(1e-20), COG(1e-12, 5)))
         solver.SetInitialPoints(x_guess)
-        solver.SetStrictRanges(lb, ub)
-        solver.Solve(
-            lambda x: costx(
-                cost_sqsq_for_pos_samp,
-                x[params_anch:-params_buildup],
-                x[0:params_anch],
-                x[-params_buildup],
-                x[-params_buildup + 1 :],
-                u,
-            )
-        )
-        x_guess = solver.bestSolution
-
-        term = Or(VTR(1e-20), COG(0.01, 50))
-        solver = PowellDirectionalSolver(big_ndim)
-        solver.enable_signal_handler()  # Handle Ctrl+C gracefully. Be restartable
-        solver.SetConstraints(constraints)
-        solver.SetGenerationMonitor(VerboseMonitor(5))
-        solver.SetEvaluationLimits(evaluations=3200000, generations=100000)
-        solver.SetTermination(term)
-        solver.SetInitialPoints(x_guess)
-        lb[:-params_buildup] = (
-            x_guess[:-params_buildup]
-            - np.abs(x_guess[:-params_buildup] - lb[:-params_buildup]) / 1.2
-        )
-        ub[:-params_buildup] = (
-            x_guess[:-params_buildup]
-            + np.abs(x_guess[:-params_buildup] - ub[:-params_buildup]) / 1.2
-        )
-        solver.SetStrictRanges(lb, ub)
-        solver.Solve(
-            lambda x: costx(
-                cost_sqsq_for_pos_samp,
-                x[params_anch:-params_buildup],
-                x[0:params_anch],
-                x[-params_buildup],
-                x[-params_buildup + 1 :],
-                u,
-            )
-        )
-        x_guess = solver.bestSolution
-
-        term = Or(VTR(1e-20), COG(0.01, 50))
-        solver = PowellDirectionalSolver(big_ndim)
-        solver.enable_signal_handler()  # Handle Ctrl+C gracefully. Be restartable
-        solver.SetConstraints(constraints)
-        solver.SetGenerationMonitor(VerboseMonitor(5))
-        solver.SetEvaluationLimits(evaluations=3200000, generations=100000)
-        solver.SetTermination(term)
-        solver.SetInitialPoints(x_guess)
-        lb[:-params_buildup] = (
-            x_guess[:-params_buildup]
-            - np.abs(x_guess[:-params_buildup] - lb[:-params_buildup]) / 1.2
-        )
-        ub[:-params_buildup] = (
-            x_guess[:-params_buildup]
-            + np.abs(x_guess[:-params_buildup] - ub[:-params_buildup]) / 1.2
-        )
         solver.SetStrictRanges(lb, ub)
         solver.Solve(
             lambda x: costx(
@@ -733,69 +744,56 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
         )
         x_guess = solver.bestSolution
 
-        term = Or(VTR(1e-20), COG(0.01, 50))
-        solver = PowellDirectionalSolver(big_ndim)
-        solver.enable_signal_handler()  # Handle Ctrl+C gracefully. Be restartable
-        solver.SetConstraints(constraints)
-        solver.SetGenerationMonitor(VerboseMonitor(5))
-        solver.SetEvaluationLimits(evaluations=3200000, generations=100000)
-        solver.SetTermination(term)
-        solver.SetInitialPoints(x_guess)
-        lb[:-params_buildup] = (
-            x_guess[:-params_buildup]
-            - np.abs(x_guess[:-params_buildup] - lb[:-params_buildup]) / 1.2
-        )
-        ub[:-params_buildup] = (
-            x_guess[:-params_buildup]
-            + np.abs(x_guess[:-params_buildup] - ub[:-params_buildup]) / 1.2
-        )
-        solver.SetStrictRanges(lb, ub)
-        solver.Solve(
-            lambda x: costx(
-                cost_for_pos_samp,
-                x[params_anch:-params_buildup],
-                x[0:params_anch],
-                x[-params_buildup],
-                x[-params_buildup + 1 :],
-                u,
-            )
-        )
-        x_guess = solver.bestSolution
         return x_guess
 
     elif method == "SLSQP":
-        x_guess = scipy.optimize.minimize(
-            lambda x: costx(
-                cost_for_pos_samp,
-                x[params_anch:-params_buildup],
-                x[0:params_anch],
-                x[-params_buildup],
-                x[-params_buildup + 1 :],
-                u,
-            ),
-            x_guess,
-            method="SLSQP",
-            bounds=list(zip(lb, ub)),
-            # constraints=[{'type': 'eq', 'fun': constraints}], # This doesn't seem to work?
-            options={"disp": True, "ftol": 1e-20, "maxiter": 150000},
-        ).x
-        return x_guess
+        # Create a random guess
+        best_cost = 999999.9
+        best_x = x_guess
+        for i in range(10):
+            random_guess = [ b[0] + (b[1] - b[0])*np.random.rand() for b in list(zip(lb, ub)) ]
+            sol = scipy.optimize.minimize(
+                lambda x: float(costx(
+                    cost_sq_for_pos_samp,
+                    x[params_anch:-params_buildup],
+                    x[0:params_anch],
+                    x[-params_buildup],
+                    x[-params_buildup + 1 :],
+                    u,
+                )),
+                random_guess,
+                method="SLSQP",
+                bounds=list(zip(lb, ub)),
+                #constraints=[{'type': 'eq', 'fun': constraints}], # This doesn't seem to work?
+                options={"disp": True, "ftol": 1e-20, "maxiter": 150000},
+            )
+            if sol.fun < best_cost:
+                print("New best x: ")
+                print("With cost: ", sol.fun)
+                best_cost = sol.fun
+                best_x = sol.x
+
+        if(not type(best_x[0]) == float):
+            best_x = np.array([float(pos) for pos in best_x])
+        return best_x
 
     elif method == "L-BFGS-B":
-        x_guess = scipy.optimize.minimize(
-            lambda x: costx(
-                cost_sqsqsq_for_pos_samp,
+        best_x = scipy.optimize.minimize(
+            lambda x: float(costx(
+                cost_sq_for_pos_samp,
                 x[params_anch:-params_buildup],
                 x[0:params_anch],
                 x[-params_buildup],
                 x[-params_buildup + 1 :],
                 u,
-            ),
+            )),
             x_guess,
             method="L-BFGS-B",
             bounds=list(zip(lb, ub)),
-            options={"disp": True, "ftol": 1e-20, "maxiter": 1500000},
+            options={"disp": True, "ftol": 1e-40, "gtol": 1e-40, "maxiter": 15000000, "maxfun": 10000000},
         ).x
+        if(not type(best_x[0]) == float):
+            best_x = np.array([float(pos) for pos in best_x])
         return x_guess
 
     else:
@@ -804,42 +802,19 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
 
 
 def print_copypasteable(anch, spool_buildup_factor, spool_r):
-    print("\n#define ANCHOR_A_Y %5d" % round(anch[A, Y]))
-    print("#define ANCHOR_A_Z %5d" % round(anch[A, Z]))
-    print("#define ANCHOR_B_X %5d" % round(anch[B, X]))
-    print("#define ANCHOR_B_Y %5d" % round(anch[B, Y]))
-    print("#define ANCHOR_B_Z %5d" % round(anch[B, Z]))
-    print("#define ANCHOR_C_X %5d" % round(anch[C, X]))
-    print("#define ANCHOR_C_Y %5d" % round(anch[C, Y]))
-    print("#define ANCHOR_C_Z %5d" % round(anch[C, Z]))
-    print("#define ANCHOR_D_Z %5d" % round(anch[D, Z]))
-    print(
-        "\nM665 W%.2f E%.2f R%.2f T%.2f Y%.2f U%.2f I%.2f O%.2f P%.2f"
-        % (
-            anch[A, Y],
-            anch[A, Z],
-            anch[B, X],
-            anch[B, Y],
-            anch[B, Z],
-            anch[C, X],
-            anch[C, Y],
-            anch[C, Z],
-            anch[D, Z],
-        )
-    )
     print(
         "\nM669 A0.0:%.2f:%.2f B%.2f:%.2f:%.2f C%.2f:%.2f:%.2f D%.2f Q%.6f R%.3f:%.3f:%.3f:%.3f"
         % (
-            anch[A, Y],
-            anch[A, Z],
-            anch[B, X],
-            anch[B, Y],
-            anch[B, Z],
-            anch[C, X],
-            anch[C, Y],
-            anch[C, Z],
-            anch[D, Z],
-            spool_buildup_factor,
+            Dec(1000.0)*anch[A, Y],
+            Dec(1000.0)*anch[A, Z],
+            Dec(1000.0)*anch[B, X],
+            Dec(1000.0)*anch[B, Y],
+            Dec(1000.0)*anch[B, Z],
+            Dec(1000.0)*anch[C, X],
+            Dec(1000.0)*anch[C, Y],
+            Dec(1000.0)*anch[C, Z],
+            Dec(1000.0)*anch[D, Z],
+            spool_buildup_factor/1000.0,
             spool_r[A],
             spool_r[B],
             spool_r[C],
@@ -849,15 +824,15 @@ def print_copypasteable(anch, spool_buildup_factor, spool_r):
 
 
 def print_anch_err(sol_anch, anchors):
-    print("\nErr_A_Y: %9.3f" % (sol_anch[A, Y] - anchors[A, Y]))
-    print("Err_A_Z: %9.3f" % (sol_anch[A, Z] - anchors[A, Z]))
-    print("Err_B_X: %9.3f" % (sol_anch[B, X] - anchors[B, X]))
-    print("Err_B_Y: %9.3f" % (sol_anch[B, Y] - anchors[B, Y]))
-    print("Err_B_Z: %9.3f" % (sol_anch[B, Z] - anchors[B, Z]))
-    print("Err_C_X: %9.3f" % (sol_anch[C, X] - anchors[C, X]))
-    print("Err_C_Y: %9.3f" % (sol_anch[C, Y] - anchors[C, Y]))
-    print("Err_C_Z: %9.3f" % (sol_anch[C, Z] - anchors[C, Z]))
-    print("Err_D_Z: %9.3f" % (sol_anch[D, Z] - anchors[D, Z]))
+    print("\nErr_A_Y: %9.3f" % (Dec(1000.0)*(sol_anch[A, Y] - Dec(anchors[A, Y]))))
+    print("Err_A_Z: %9.3f" %   (Dec(1000.0)*(sol_anch[A, Z] - Dec(anchors[A, Z]))))
+    print("Err_B_X: %9.3f" %   (Dec(1000.0)*(sol_anch[B, X] - Dec(anchors[B, X]))))
+    print("Err_B_Y: %9.3f" %   (Dec(1000.0)*(sol_anch[B, Y] - Dec(anchors[B, Y]))))
+    print("Err_B_Z: %9.3f" %   (Dec(1000.0)*(sol_anch[B, Z] - Dec(anchors[B, Z]))))
+    print("Err_C_X: %9.3f" %   (Dec(1000.0)*(sol_anch[C, X] - Dec(anchors[C, X]))))
+    print("Err_C_Y: %9.3f" %   (Dec(1000.0)*(sol_anch[C, Y] - Dec(anchors[C, Y]))))
+    print("Err_C_Z: %9.3f" %   (Dec(1000.0)*(sol_anch[C, Z] - Dec(anchors[C, Z]))))
+    print("Err_D_Z: %9.3f" %   (Dec(1000.0)*(sol_anch[D, Z] - Dec(anchors[D, Z]))))
 
 
 class Store_as_array(argparse._StoreAction):
@@ -931,6 +906,7 @@ if __name__ == "__main__":
             [0, 0, 2350],
         ]
     )
+    anchors /= 1000.0
 
     # a = np.zeros((2,3))
     xyz_of_samp = args["xyz_of_samp"]
@@ -967,7 +943,9 @@ if __name__ == "__main__":
                 "You specified %d numbers after your -s/--sample_data option, which is not a multiple of 4 number of numbers."
             )
             sys.exit(1)
-        motor_pos_samp = motor_pos_samp.reshape((int(np.size(motor_pos_samp) / 4), 4))
+        motor_pos_samp = motor_pos_samp.reshape(
+            (int(np.size(motor_pos_samp) / 4), 4)
+        )
     else:
         # You might want to manually replace this with your collected data
     #    motor_pos_samp = np.array(
@@ -1012,47 +990,57 @@ if __name__ == "__main__":
     #            [1492.21, -664.47, -102.30, -2519.54],
     #        ]
     #    )
-    ### Simulated data w no fuzz ###
-    motor_pos_samp = np.array(
-       [
-           # [    -0.0  ,     -0.0  ,     -0.0  ,     -0.0  ],
-           [-1559.522, 35112.937, 11052.954, -8872.595],
-           [15947.869, 44648.943, 25081.529, -20058.220],
-           [6380.425, 19670.677, -16066.842, 4584.479],
-           [12033.385, 23821.841, -5934.602, -15049.766],
-           [25842.555, 34790.088, 13138.384, -28972.382],
-           [26651.024, 14774.897, -26368.609, 8830.624],
-           [30623.769, 19265.113, -11595.884, -8872.595],
-           [41211.318, 30931.858, 9866.130, -20058.220],
-           [-22455.217, 16219.845, 15070.811, 4584.479],
-           [-9771.808, 20604.526, 19861.334, -15049.766],
-           [10871.057, 32057.528, 32119.331, -28972.382],
-           [-9961.996, 31610.402, 5267.875, 8830.624],
-           [6498.393, 5934.960, 6498.393, -22456.334],
-           [21632.763, 20205.165, 21632.763, -44870.348],
-           [22498.630, -7698.495, -4589.645, 4584.479],
-           [26731.305, -604.054, 2676.888, -15049.766],
-           [37871.408, 15355.987, 18863.009, -28972.382],
-           [-9961.996, 6924.497, 31248.118, 8830.624],
-           [-1559.522, 12086.068, 34967.311, -8872.595],
-           [15947.869, 25035.973, 44996.327, -20058.220],
-           [6380.425, -14551.956, 20602.771, 4584.479],
-           [12033.385, -6018.578, 24965.465, -15049.766],
-           [25842.555, 11621.846, 36374.371, -28972.382],
-           [26651.024, -30082.168, 17780.735, 8830.624],
-           [30623.769, -15504.967, 22351.992, -8872.595],
-           [41211.318, 5888.695, 34181.575, -20058.220],
-       ]
-    )
+        ### Simulated data w no fuzz ###
+        motor_pos_samp = np.array(
+          [
+              # [    -0.0  ,     -0.0  ,     -0.0  ,     -0.0  ],
+              [-1559.522, 35112.937, 11052.954, -8872.595],
+              [15947.869, 44648.943, 25081.529, -20058.220],
+              [6380.425, 19670.677, -16066.842, 4584.479],
+              [12033.385, 23821.841, -5934.602, -15049.766],
+              [25842.555, 34790.088, 13138.384, -28972.382],
+              [26651.024, 14774.897, -26368.609, 8830.624],
+              [30623.769, 19265.113, -11595.884, -8872.595],
+              [41211.318, 30931.858, 9866.130, -20058.220],
+              [-22455.217, 16219.845, 15070.811, 4584.479],
+              [-9771.808, 20604.526, 19861.334, -15049.766],
+              [10871.057, 32057.528, 32119.331, -28972.382],
+              [-9961.996, 31610.402, 5267.875, 8830.624],
+              [6498.393, 5934.960, 6498.393, -22456.334],
+              [21632.763, 20205.165, 21632.763, -44870.348],
+              [22498.630, -7698.495, -4589.645, 4584.479],
+              [26731.305, -604.054, 2676.888, -15049.766],
+              [37871.408, 15355.987, 18863.009, -28972.382],
+              [-9961.996, 6924.497, 31248.118, 8830.624],
+              [-1559.522, 12086.068, 34967.311, -8872.595],
+              [15947.869, 25035.973, 44996.327, -20058.220],
+              [6380.425, -14551.956, 20602.771, 4584.479],
+              [12033.385, -6018.578, 24965.465, -15049.766],
+              [25842.555, 11621.846, 36374.371, -28972.382],
+              [26651.024, -30082.168, 17780.735, 8830.624],
+              [30623.769, -15504.967, 22351.992, -8872.595],
+              [41211.318, 5888.695, 34181.575, -20058.220],
+          ]
+        )
 
     u = np.shape(motor_pos_samp)[0]
     ux = np.shape(xyz_of_samp)[0]
+
+
+    motor_pos_samp = np.array([Dec(r) for r in motor_pos_samp.reshape(u*4)]).reshape((u, 4))
+    xyz_of_samp = np.array([Dec(r) for r in xyz_of_samp])
+    motor_pos_samp /= Dec(1000.0)
+    if xyz_of_samp.size is not 0:
+        xyz_of_samp /= Dec(1000.0)
+
     if ux > u:
         print("Error: You have more xyz positions than samples!")
         print("You have %d xyz positions and %d samples" % (ux, u))
         sys.exit(1)
 
     def computeCost(solution):
+        if(not type(solution[0]) == decimal.Decimal):
+            solution = np.array([Dec(pos) for pos in solution])
         anch = anchorsvec2matrix(solution[0:params_anch])
         spool_buildup_factor = solution[-params_buildup]
         spool_r = solution[-params_buildup + 1 :]
@@ -1061,17 +1049,19 @@ if __name__ == "__main__":
             pos = np.vstack(
                 (
                     xyz_of_samp,
-                    np.reshape(solution[params_anch:-params_buildup], (u - ux, 3)),
+                    np.reshape(
+                        solution[params_anch:-params_buildup], (u - ux, 3)
+                    ),
                 )
             )
         else:
             pos = np.reshape(solution[params_anch:-params_buildup], (u, 3))
-        return cost_for_pos_samp(
+        return cost_sq_for_pos_samp(
             anchorsvec2matrix(solution[0:params_anch]),
             pos,
             motor_pos_samp,
             spool_buildup_factor,
-            np.array([spool_r]),
+            spool_r,
         )
 
     ndim = 3 * (u - ux) + params_anch + params_buildup
@@ -1103,31 +1093,40 @@ if __name__ == "__main__":
                         )
                     )
                 else:
-                    self.pos = np.reshape(solution[params_anch:-params_buildup], (u, 3))
+                    self.pos = np.reshape(
+                        solution[params_anch:-params_buildup], (u, 3)
+                    )
 
     the_cand = candidate("no_name", np.zeros(ndim))
     st1 = timeit.default_timer()
     if args["method"] == "all":
         cands = [
-            candidate(
-                cand_name,
-                solve(motor_pos_samp, xyz_of_samp, cand_name, args["cx_is_positive"]),
-            )
-            for cand_name in [
-                "L-BFGS-B",
-                "PowellDirectionalSolver",
-                "SLSQP",
-                "differentialEvolutionSolver",
-                "BuckShot",
-            ]
-        ]
+                candidate(
+                    cand_name,
+                    solve(
+                        motor_pos_samp, xyz_of_samp, cand_name, args["cx_is_positive"]
+                        ),
+                    )
+                for cand_name in [
+                    "L-BFGS-B",
+                    "PowellDirectionalSolver",
+                    "SLSQP",
+                    "differentialEvolutionSolver",
+                    "BuckShot",
+                    ]
+                ]
         cands[:] = sorted(cands, key=lambda cand: cand.cost)
         print("Winner method: is %s" % cands[0].name)
         the_cand = cands[0]
     else:
         the_cand = candidate(
             args["method"],
-            solve(motor_pos_samp, xyz_of_samp, args["method"], args["cx_is_positive"]),
+            solve(
+                motor_pos_samp,
+                xyz_of_samp,
+                args["method"],
+                args["cx_is_positive"],
+            ),
         )
 
     st2 = timeit.default_timer()
@@ -1142,14 +1141,18 @@ if __name__ == "__main__":
         if not args["debug"]:
             sys.exit(1)
         else:
-            print("       Debug flag is set, so printing bogus anchor values anyways.")
+            print(
+                "       Debug flag is set, so printing bogus anchor values anyways."
+            )
     elif (u + 3 * ux) < params_anch + 4:
         print(
             "\nWarning: Data set might be too small.\n         The below values are unreliable unless input data is extremely accurate."
         )
 
-    print_copypasteable(the_cand.anch, the_cand.spool_buildup_factor, the_cand.spool_r)
-    print("Spool buildup factor:", the_cand.spool_buildup_factor)
+    print_copypasteable(
+        the_cand.anch, the_cand.spool_buildup_factor, the_cand.spool_r
+    )
+    print("Spool buildup factor:", the_cand.spool_buildup_factor/1000.0)
     print("Spool radii:", the_cand.spool_r)
     if args["debug"]:
         print_anch_err(the_cand.anch, anchors)
@@ -1158,7 +1161,7 @@ if __name__ == "__main__":
         np.set_printoptions(precision=6)
         np.set_printoptions(suppress=True)  # No scientific notation
         print("Data collected at positions: ")
-        print(the_cand.pos)
+        print(the_cand.pos * 1000.0)
         # example_data_pos = np.array(
         #    [
         #        [-1000.0, -1000.0, 1000.0],
@@ -1191,8 +1194,8 @@ if __name__ == "__main__":
         # )
         # print("pos err: ")
         # print(the_cand.pos - example_data_pos)
-        #print(
+        # print(
         #    "spool_buildup_compensation err: %1.6f"
         #    % (the_cand.spool_buildup_factor - 0.008)
-        #)
-        #print("spool_r err:", the_cand.spool_r - np.array([65, 65, 65, 65]))
+        # )
+        # print("spool_r err:", the_cand.spool_r - np.array([65, 65, 65, 65]))
