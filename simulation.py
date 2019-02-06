@@ -725,10 +725,10 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
 
         sprayer = BuckshotSolver
         seeker = PowellDirectionalSolver(ndim)
-        #seeker.SetGenerationMonitor(VerboseMonitor(5))
+        seeker.SetGenerationMonitor(VerboseMonitor(5))
         #seeker.SetConstraints(constraints)
-        #seeker.SetTermination(Or(VTR(1e-4), COG(0.01, 20)))
-        #seeker.SetEvaluationLimits(evaluations=3200000, generations=100000)
+        seeker.SetTermination(Or(VTR(1e-4), COG(0.01, 20)))
+        seeker.SetEvaluationLimits(evaluations=3200000, generations=100000)
         seeker.SetStrictRanges(lb, ub)
         #seeker.enable_signal_handler()  # Handle Ctrl+C. Be restartable
         npts = 10  # number of solvers
