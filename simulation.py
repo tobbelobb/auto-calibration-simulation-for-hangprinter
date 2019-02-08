@@ -405,7 +405,8 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
     # to fit better with our algorithms
 
     # Make-all-answers ~1 scaling
-    # L-BFGS favours this
+    # L-BFGS favors this
+    #overall_scaler = 1.0
     #anch_scale = 1500.0
     #pos_scale = 500.0
     #sbf_scale = 0.008
@@ -424,11 +425,11 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
 
     # These scaling values work well if there are
     # some known xyz_of_samp
-    overall_scaler = 1.0
-    anch_scale = 1.0
+    overall_scaler = 2.0
+    anch_scale = 0.2
     pos_scale  = 1.0
-    sbf_scale  = 0.010
-    sr_scale   = 0.5
+    sbf_scale  = 0.0010
+    sr_scale   = 0.20
 
     def scale_back_solution(sol):
         sol[0:params_anch] *= float(anch_scale)
@@ -728,7 +729,7 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
         seeker.SetGenerationMonitor(VerboseMonitor(5))
         #seeker.SetConstraints(constraints)
         seeker.SetTermination(Or(VTR(1e-4), COG(0.01, 20)))
-        seeker.SetEvaluationLimits(evaluations=3200000, generations=100000)
+        #seeker.SetEvaluationLimits(evaluations=3200000, generations=100000)
         seeker.SetStrictRanges(lb, ub)
         #seeker.enable_signal_handler()  # Handle Ctrl+C. Be restartable
         npts = 10  # number of solvers
@@ -764,7 +765,6 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
         return scale_back_solution(best_x)
 
     elif method == "PowellDirectionalSolver":
-        print("Hit Ctrl+C to stop solver. Then type exit to get the current solution.")
         from mystic.solvers import PowellDirectionalSolver
         from mystic.termination import Or, CollapseAt, CollapseAs
         from mystic.termination import ChangeOverGeneration as COG
@@ -772,70 +772,39 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
         from mystic.termination import VTR, And, Or
 
         ndim = number_of_params_pos + params_anch + params_buildup
-
-        # Solver for both simultaneously
-        solver = PowellDirectionalSolver(ndim)
-        solver.enable_signal_handler()  # Handle Ctrl+C gracefully. Be restartable
-        #solver.SetConstraints(constraints)
-        solver.SetGenerationMonitor(VerboseMonitor(5))
-        solver.SetEvaluationLimits(evaluations=3200000, generations=100000)
-        solver.SetTermination(Or(VTR(1e-25), COG(1e-18, 5)))
-        solver.SetInitialPoints(x_guess)
-        solver.SetStrictRanges(lb, ub)
-        solver.Solve(
-            lambda x: overall_scaler*float(costx(
-                cost_sq_for_pos_samp,
-                x[params_anch:-params_buildup],
-                x[0:params_anch],
-                x[-params_buildup],
-                x[-params_buildup + 1 :],
-                u,
-            ))
-        )
-        best_x = np.array(solver.bestSolution)
-
-#        lb[0:-params_buildup] = best_x[0:-params_buildup] - (10.0 / float(pos_scale))
-#        ub[0:-params_buildup] = best_x[0:-params_buildup] + (10.0 / float(pos_scale))
-#        lb[-params_buildup] = best_x[-params_buildup] - (0.001 / float(sbf_scale))
-#        ub[-params_buildup] = best_x[-params_buildup] + (0.001 / float(sbf_scale))
-#        lb[-params_buildup + 1 :] = best_x[-params_buildup + 1 :] - (1.0 / float(sr_scale))
-#        ub[-params_buildup + 1 :] = best_x[-params_buildup + 1 :] + (1.0 / float(sr_scale))
-#
-#
-#        #print("new lb", lb)
-#        #print("new ub", ub)
-#
-#        from mystic.solvers import DifferentialEvolutionSolver2
-#        from mystic.monitors import VerboseMonitor
-#        from mystic.termination import VTR, ChangeOverGeneration, And, Or
-#        from mystic.strategy import Best1Exp, Best1Bin
-#        stop = Or(VTR(1e-22), ChangeOverGeneration(1e-20, 500))
-#        ndim = number_of_params_pos + params_anch + params_buildup
-#        npop = 2
-#        stepmon = VerboseMonitor(100)
-#        solverDiffEv = DifferentialEvolutionSolver2(ndim, npop)
-#        solverDiffEv.SetRandomInitialPoints(lb, ub)
-#        solverDiffEv.SetStrictRanges(lb, ub)
-#        #solverDiffEv.SetConstraints(constraints)
-#        solverDiffEv.SetGenerationMonitor(stepmon)
-#        solverDiffEv.enable_signal_handler()  # Handle Ctrl+C gracefully. Be restartable
-#        solverDiffEv.Solve(
-#            lambda x: 200.0*costx(
-#                cost_for_pos_samp,
-#                x[params_anch:-params_buildup],
-#                x[0:params_anch],
-#                x[-params_buildup],
-#                x[-params_buildup + 1 :],
-#                u,
-#            ),
-#            termination=stop,
-#            strategy=Best1Bin,
-#        )
-#        iterations = len(stepmon)
-#        cost = stepmon.y[-1]
-#        print("Generation %d has best Chi-Squared: %f" % (iterations, cost))
-#        best_x = solverDiffEv.Solution()
-#
+        killer = GracefulKiller()
+        best_cost = 9999999999999.9
+        i = 0
+        while(True):
+            i = i + 1
+            print("Try: %d/30. Hit Ctrl+C and wait a bit to stop solver." % i)
+            if killer.kill_now or i == 30:
+                break
+            solver = PowellDirectionalSolver(ndim)
+            solver.SetRandomInitialPoints(lb, ub)
+            solver.SetEvaluationLimits(evaluations=3200000, generations=100000)
+            solver.SetTermination(Or(VTR(1e-25), COG(1e-10, 10)))
+            solver.SetStrictRanges(lb, ub)
+            solver.SetConstraints(constraints)
+            solver.SetGenerationMonitor(VerboseMonitor(5))
+            solver.Solve(
+                lambda x: overall_scaler*float(costx(
+                    cost_sq_for_pos_samp,
+                    x[params_anch:-params_buildup],
+                    x[0:params_anch],
+                    x[-params_buildup],
+                    x[-params_buildup + 1 :],
+                    u,
+                ))
+            )
+            if solver.bestEnergy < best_cost:
+                print("New best x: ")
+                print("With cost: ", solver.bestEnergy)
+                best_cost = solver.bestEnergy
+                best_x = np.array(solver.bestSolution)
+            if solver.bestEnergy < 0.0001:
+                print("Found a perfect solution!")
+                break
 
         if(not type(best_x[0]) == float):
             best_x = np.array([float(pos) for pos in best_x])
@@ -1363,7 +1332,6 @@ if __name__ == "__main__":
         ))
 
     ndim = 3 * (u - ux) + params_anch + params_buildup
-    print(ndim)
 
     class candidate:
         name = "no_name"
