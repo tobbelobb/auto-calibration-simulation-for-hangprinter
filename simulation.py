@@ -461,7 +461,7 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
         # Adds in known positions back in before calculating the cost
         pos = np.zeros((u, 3))
         if np.size(xyz_of_samp) != 0:
-            pos[0:ux] = xyz_of_samp * pos_scale
+            pos[0:ux] = xyz_of_samp / pos_scale
         pos[ux:] = np.reshape(posvec, (u - ux, 3))
         return _cost(
             anchors * anch_scale,
