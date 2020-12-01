@@ -21,7 +21,7 @@ def how_big_spool_r_difference_will_static_buildup_compensation_make(
 ):
     """How much will the spool radii increase if we wind an amount of line around it?
 
-    Derivation: Imagine that the spool is made up of would line all the way to the core.
+    Derivation: Imagine that the spool is made up of wound line all the way to the core.
 
     Spool volume before adding new line = h*pi*r^2 = v*x0,
     <==> r = sqrt(v*x0/(h*pi))
@@ -179,7 +179,7 @@ hp2_dyn_comp = how_big_difference_will_dynamic_buildup_compensation_make(
 #  A negative number means the motor will rotate less (in any direction) than it would have without compensation.
 #  A positive number means the motor will rotate more than it would without compensation.
 #  When motor rotates less, the line length changes less
-#  The unit of this and all followin arrays is mm.
+#  The unit of this and all following arrays is mm.
 #  Numbers represent effector movement added or subtracted by compensation algorithm.
 #
 #  Note on choice of args for HP2:
