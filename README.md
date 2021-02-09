@@ -61,7 +61,7 @@ As of Jan 31, 2018, this is the procedure:
  - Mark reference point for all encoders: `G96 A B C D` (Stock Marlin accepts `G96` as a short hand for `G96 A B C D`)
  - Repeat 13 - ca 20 times:
    - Drag mover to position of data point collection.
-   - Collect data point: `M114 S1` (Old firmwares, before Feb 6, 2018 used: `G97 A B C D`)
+   - Collect data point: `M114 S1` (Old firmwares, before Feb 6, 2018 used: `G97 A B C D`, HP4 Prototype/RepRapFirmware uses `M114 S2`)
 
 ## How to Insert Data Points?
 Before you run the simulation, open `simulation.py` and modify the main function, near the bottom of the file.
