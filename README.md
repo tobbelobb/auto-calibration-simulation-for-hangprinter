@@ -1,4 +1,9 @@
-# Auto Calibration Simulation for Hangprinter
+# This Branch Is Part Of HP4 Development. To Be Used Together With RepRapFirmware.
+
+HP4 Prototype/RepRapFirmware uses `M114 S2` to collect auto calibration data in the form of motor/encoder positions in degrees. HP3 worked differently. This branch of this repo auto calibrates based on encoder position data. That is why this branch of this repo only works with HP4, and not HP3.
+
+# Auto Calibration Simulation for Hangprinter v4
+
 Hangprinter is a parallel line driven RepRap 3D Printer.
 It's repo is [here](https://github.com/tobbelobb/hangprinter).
 
@@ -61,7 +66,7 @@ As of Jan 31, 2018, this is the procedure:
  - Mark reference point for all encoders: `G96 A B C D` (Stock Marlin accepts `G96` as a short hand for `G96 A B C D`)
  - Repeat 13 - ca 20 times:
    - Drag mover to position of data point collection.
-   - Collect data point: `M114 S1` (Old firmwares, before Feb 6, 2018 used: `G97 A B C D`, HP4 Prototype/RepRapFirmware uses `M114 S2`)
+   - Collect data point: `M114 S2` (HP4 Prototype/RepRapFirmware returns the encoder positions in degrees. This is different from how HP3 worked. This branch of this repo auto calibrates based on encoder position data. That is why this branch of this repo only works with HP4, and not HP3.)
 
 ## How to Insert Data Points?
 Before you run the simulation, open `simulation.py` and modify the main function, near the bottom of the file.
