@@ -946,8 +946,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "-m",
         "--method",
-        help="Available methods are L-BFGS-B (0), PowellDirectionalSolver (1), SLSQP (2), differentialEvolutionSolver (3), BuckShot (4), and all (5). Try 0 first, then 1, and so on.",
-        default="PowellDirectionalSolver",
+        help="Available methods are SLSQP (0), PowellDirectionalSolver (1), L-BFGS-B (2), differentialEvolutionSolver (3), BuckShot (4), and all (5). Try 0 first, then 1, and so on.",
+        default="SLSQP",
     )
     parser.add_argument(
         "-x",
@@ -976,11 +976,11 @@ if __name__ == "__main__":
     args = vars(parser.parse_args())
 
     if args["method"] == "0":
-        args["method"] = "L-BFGS-B"
+        args["method"] = "SLSQP"
     if args["method"] == "1":
         args["method"] = "PowellDirectionalSolver"
     if args["method"] == "2":
-        args["method"] = "SLSQP"
+        args["method"] = "L-BFGS-B"
     if args["method"] == "3":
         args["method"] = "differentialEvolutionSolver"
     if args["method"] == "4":
@@ -1063,9 +1063,6 @@ if __name__ == "__main__":
               [6597.56,  -4327.81, -2498.74, 360.66, ],
               [6655.95,  - 319.66, -6891.31, 539.56, ],
               [274.94,   3473.22, -4111.23, 181.35, ],
-
-              # Randoms
-              [0,0,0,0],
               [705.76, 10131.73, 7688.37, -18084.92, ],
             ]
         )
@@ -1159,9 +1156,9 @@ if __name__ == "__main__":
                         ),
                     )
                 for cand_name in [
-                    "L-BFGS-B",
-                    "PowellDirectionalSolver",
                     "SLSQP",
+                    "PowellDirectionalSolver",
+                    "L-BFGS-B",
                     "differentialEvolutionSolver",
                     "BuckShot",
                     ]
