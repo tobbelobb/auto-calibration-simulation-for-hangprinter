@@ -52,13 +52,6 @@ class tester:
                 return False
         return True
 
-        return np.all(
-            np.sign(
-                np.abs(samp_in_degrees_with_buildup_comp)
-                - np.abs(self.samp_in_degrees_without_buildup_comp)
-            )
-            == np.sign(self.samp)
-        )
 
     def test_samp_with_low_buildup_factor(self):
         """When the buildup factor is very small, buildup compensated values should converge towards un-compensated values

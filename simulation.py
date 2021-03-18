@@ -36,7 +36,7 @@ D = 3
 X = 0
 Y = 1
 Z = 2
-params_anch = 8
+params_anch = 9
 params_buildup = 5  # four spool radii, one spool buildup factor
 A_bx = 2
 A_cx = 5
@@ -350,22 +350,14 @@ def cost_sqsqsq_for_pos_samp(
     )
 
 
-def anchorsvec2matrix(anchorsvec, anch_D_Z = 0):
+def anchorsvec2matrix(anchorsvec):
     """ Create a 4x3 anchors matrix from 6 element anchors vector.
     """
-    #anchors = np.array(np.zeros((4, 3)))
-    if (anch_D_Z == 0):
-        anchors = np.array([[Dec(0.0),Dec(anchorsvec[0]), Dec(anchorsvec[1])],
-                            [Dec(anchorsvec[2]), Dec(anchorsvec[3]), Dec(anchorsvec[4])],
-                            [Dec(anchorsvec[5]), Dec(anchorsvec[6]), Dec(anchorsvec[7])],
-                            [Dec(0.0), Dec(0.0), Dec(anchorsvec[8])],
-                            ])
-    else:
-        anchors = np.array([[Dec(0.0),Dec(anchorsvec[0]), Dec(anchorsvec[1])],
-                            [Dec(anchorsvec[2]), Dec(anchorsvec[3]), Dec(anchorsvec[4])],
-                            [Dec(anchorsvec[5]), Dec(anchorsvec[6]), Dec(anchorsvec[7])],
-                            [Dec(0.0), Dec(0.0), Dec(anch_D_Z)],
-                            ])
+    anchors = np.array([[Dec(0.0),Dec(anchorsvec[0]), Dec(anchorsvec[1])],
+                        [Dec(anchorsvec[2]), Dec(anchorsvec[3]), Dec(anchorsvec[4])],
+                        [Dec(anchorsvec[5]), Dec(anchorsvec[6]), Dec(anchorsvec[7])],
+                        [Dec(0.0), Dec(0.0), Dec(anchorsvec[8])],
+                        ])
 
     return anchors
 
@@ -463,7 +455,7 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
         """
         #spool_r = np.array(spool_r)
 
-        if(not type(posvec[0]) == decimal.Decimal):
+        if(len(posvec) > 0 and not type(posvec[0]) == decimal.Decimal):
             posvec = np.array([Dec(pos) for pos in posvec])
         if(not type(anchvec[0]) == decimal.Decimal):
             anchvec = np.array([Dec(anch) for anch in anchvec])
@@ -472,7 +464,7 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
         if(not type(spool_r[0]) == decimal.Decimal):
             spool_r = np.array([Dec(r) for r in spool_r])
 
-        anchors = anchorsvec2matrix(anchvec, (xyz_of_samp[0][Z] + 175.0) / anch_scale)
+        anchors = anchorsvec2matrix(anchvec)
         # Adds in known positions back in before calculating the cost
         pos = np.zeros((u, 3))
         if np.size(xyz_of_samp) != 0:
@@ -512,7 +504,7 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
           -l_long / float(anch_scale),  # A_cx > -4000
             300.0 / float(anch_scale),  # A_cy > 300
            -300.0 / float(anch_scale),  # A_cz > -300.0
-           #1000.0 / float(anch_scale),  # A_dz > 1000
+           1000.0 / float(anch_scale),  # A_dz > 1000
       ]
       + [-l_short / float(pos_scale), -l_short / float(pos_scale), data_z_min / float(pos_scale)] * (u - ux)
       + [0.00005 / float(sbf_scale), 64.0 / float(sr_scale), 64.0 / float(sr_scale), 64.0 / float(sr_scale), 64.0 / float(sr_scale)]
@@ -527,75 +519,11 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
           -300.0 / float(anch_scale),  # A_cx < -300
           l_long / float(anch_scale),  # A_cy < 4000.0
            200.0 / float(anch_scale),  # A_cz < 200
-          #l_long / float(anch_scale),  # A_dz < 4000.0
+          l_long / float(anch_scale),  # A_dz < 4000.0
       ]
       + [l_short / float(pos_scale), l_short / float(pos_scale), 2.0 * l_short / float(pos_scale)] * (u - ux)
       + [0.1 / float(sbf_scale), 67.0 / float(sr_scale), 67.0 / float(sr_scale), 67.0 / float(sr_scale), 67.0 / float(sr_scale)]
     )
-    #lb = (
-    #    [
-    #        -2000.0 / anch_scale,  # A_ay > -2000.0
-    #         -200.0 / anch_scale,  # A_az > -200.0
-    #         1000.0 / anch_scale,  # A_bx > 1000
-    #          900.0 / anch_scale,  # A_by > 900
-    #         -200.0 / anch_scale,  # A_bz > -200.0
-    #        -2000.0 / anch_scale,  # A_cx > -2000
-    #          700.0 / anch_scale,  # A_cy > 700
-    #         -200.0 / anch_scale,  # A_cz > -200.0
-    #         2300.0 / anch_scale,  # A_dz > 2300
-    #    ]
-    #    + [ -1000.0 / pos_scale,
-    #        -1000.0 / pos_scale,
-    #          -30.0 / pos_scale ] * (u - ux)
-    #    + [0.005 / sbf_scale, 64.6 / sr_scale, 64.6 / sr_scale, 64.6 / sr_scale, 64.6 / sr_scale]
-    #)
-    #ub = (
-    #    [
-    #        -1600.0 / anch_scale,  # A_ay < -1600
-    #            0.0 / anch_scale,  # A_az < 0
-    #         1600.0 / anch_scale,  # A_bx < 1600
-    #         1500.0 / anch_scale,  # A_by < 1500
-    #            0.0 / anch_scale,  # A_bz < 200
-    #        -1300.0 / anch_scale,  # A_cx < -1300
-    #         1000.0 / anch_scale,  # A_cy < 1000.0
-    #            0.0 / anch_scale,  # A_cz < 0
-    #         2700.0 / anch_scale,  # A_dz < 2700.0
-    #    ]
-    #    + [1000.0 / pos_scale,
-    #       1000.0 / pos_scale,
-    #       2000.0 / pos_scale] * (u - ux)
-    #    + [0.01 / sbf_scale, 66.0 / sr_scale, 66.0 / sr_scale, 66.0 / sr_scale, 66.0 / sr_scale]
-    #)
-    # lb = (
-    #    [
-    #        -999999.0,
-    #        -999999.0,
-    #        -999999.0,
-    #        -999999.0,
-    #        -999999.0,
-    #        -999999.0,
-    #        -999999.0,
-    #        -999999.0,
-    #        -999999.0,
-    #    ]
-    #    + [-999999.0, -999999.0, -999999.0] * (u - ux)
-    #    + [0.0001 / sbf_scale, 60.5 / sr_scale, 60.5 / sr_scale, 60.5 / sr_scale, 60.5 / sr_scale]
-    # )
-    # ub = (
-    #    [
-    #        999999.9,
-    #        999999.9,
-    #        999999.9,
-    #        999999.9,
-    #        999999.9,
-    #        999999.9,
-    #        999999.9,
-    #        999999.9,
-    #        999999.9,
-    #    ]
-    #    + [999999.0, 999999.0, 999999.0] * (u - ux)
-    #    + [100 / sbf_scale, 670 / sr_scale, 670 / sr_scale, 670 / sr_scale, 670 / sr_scale]
-    # )
 
     # If the user has input xyz data, then signs should be ok anyways
     if ux > 2:
@@ -833,8 +761,8 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
         best_x = x_guess
         killer = GracefulKiller()
 
-        for i in range(30):
-            print("Try: %d/30. Hit Ctrl+C and wait a bit to stop solver." % i)
+        for i in range(20):
+            print("Try: %d/20. Hit Ctrl+C and wait a bit to stop solver." % i)
             if killer.kill_now:
                 break
             random_guess = np.array([ b[0] + (b[1] - b[0])*np.random.rand() for b in list(zip(lb, ub)) ])
@@ -1012,24 +940,11 @@ if __name__ == "__main__":
     else:
         xyz_of_samp = np.array(
             [
-                # You might want to manually input positions where you made samples here like
-                [0.0, 0.0, 2170.0],
-                [5.0, 18.0, 800.0],
-                [2.0, 795.0, 17.0],
-                [1.0, -802.0, 17.0],
-                [-803.0, 0.0, 17.0],
-                [459.0, 1.0, 17.0],
-
-                [-210.5, -297.0, 0.0],
-                [   0.0, -297.0, 0.0],
-                [ 210.5, -284.0, 0.0],
-
-                [ 210.5,    0.0, 0.0],
-                [ 210.5,  297.0, 0.0],
-                [   0.0,  297.0, 0.0],
-                [-210.5,  287.0, 0.0],
-                [-210.5,    0.0, 0.0],
-              ]
+[-33.6826, -8.1472, 245.819],
+[-54.7417, -295.772, 311.473],
+[-31.3, -54.5777, 623.788],
+[297.613, 381.752, 247.247],
+            ]
             )
 
     motor_pos_samp = args["sample_data"]
@@ -1047,23 +962,10 @@ if __name__ == "__main__":
         # You might want to manually replace this with your collected data
         motor_pos_samp = np.array(
             [
-              [26653.19, 25401.77, 27215.29, -48592.15, ],
-              [5626.68, 4913.27, 5681.09, -17987.06, ],
-              [17895.29, -9554.57, -3867.06, 2528.55, ],
-              [-17761.66, 14109.15, 11005.39, 2730.30, ],
-              [4213.21, 14429.29, -14119.04, 2540.64, ],
-              [1479.90, -6530.11, 9461.47, 658.50, ],
-
-              [-6247.95, 8005.74, -238.33, 667.45, ],
-              [-6587.82, 4869.74, 3497.55, 479.40, ],
-              [-5914.83, 1752.45, 7199.76, 621.76, ],
-
-              [283.49,   -3286.65,  4227.62, 207.36, ],
-              [6885.27,  -7966.05,  1954.32, 591.93, ],
-              [6597.56,  -4327.81, -2498.74, 360.66, ],
-              [6655.95,  - 319.66, -6891.31, 539.56, ],
-              [274.94,   3473.22, -4111.23, 181.35, ],
-              [705.76, 10131.73, 7688.37, -18084.92, ],
+[618.08, 1318.50, 464.85, -5560.42, ],
+[-5193.15, 6360.00, 4114.80, -6810.90, ],
+[2495.85, 4269.23, 4114.20, -14112.45, ],
+[9863.85, -9667.99, 4114.20, -4033.20, ],
             ]
         )
 
@@ -1081,10 +983,7 @@ if __name__ == "__main__":
 
     def computeCost(solution):
         anch = np.zeros((4, 3))
-        if params_anch == 9:
-            anch = anchorsvec2matrix(solution[0:params_anch])
-        else:
-            anch = anchorsvec2matrix(solution[0:params_anch], (xyz_of_samp[0][Z] + 175.0))
+        anch = anchorsvec2matrix(solution[0:params_anch])
         spool_buildup_factor = Dec(solution[-params_buildup])
         spool_r = np.array([Dec(x) for x in solution[-params_buildup + 1 :]])
         pos = np.zeros((u, 3))
@@ -1125,10 +1024,7 @@ if __name__ == "__main__":
                 np.set_printoptions(suppress=False)
                 print("%s has cost %e" % (self.name, self.cost))
                 np.set_printoptions(suppress=True)
-                if params_anch == 9:
-                    self.anch = anchorsvec2matrix(self.solution[0:params_anch])
-                else:
-                    self.anch = anchorsvec2matrix(self.solution[0:params_anch], (xyz_of_samp[0][Z] + 175.0))
+                self.anch = anchorsvec2matrix(self.solution[0:params_anch])
                 self.spool_buildup_factor = self.solution[-params_buildup]
                 self.spool_r = self.solution[-params_buildup + 1 :]
                 if np.size(xyz_of_samp) != 0:
