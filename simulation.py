@@ -36,13 +36,14 @@ D = 3
 X = 0
 Y = 1
 Z = 2
-params_anch = 9
+params_anch = 12
 params_buildup = 5  # four spool radii, one spool buildup factor
-A_bx = 2
-A_cx = 5
+A_bx = 3
+A_cx = 6
 
 def symmetric_anchors(l, az=-120.0, bz=-120.0, cz=-120.0):
     anchors = np.array(np.zeros((4, 3)))
+    anchors[A, X] = 0
     anchors[A, Y] = -l
     anchors[A, Z] = az
     anchors[B, X] = l * np.cos(np.pi / 6)
@@ -51,6 +52,8 @@ def symmetric_anchors(l, az=-120.0, bz=-120.0, cz=-120.0):
     anchors[C, X] = -l * np.cos(np.pi / 6)
     anchors[C, Y] = l * np.sin(np.pi / 6)
     anchors[C, Z] = cz
+    anchors[D, X] = 0
+    anchors[D, Y] = 0
     anchors[D, Z] = l
     return anchors
 
@@ -76,16 +79,17 @@ def irregular_anchors(l, fuzz_percentage=0.2, az=-120.0, bz=-120.0, cz=-120.0):
                       (except Z-difference of B- and C-anchors)
     """
     fuzz = np.array(np.zeros((4, 3)))
+    fuzz[A, X] = 0
     fuzz[A, Y] = centered_rand(l * fuzz_percentage)
-    # fuzz[A, Z] = 0 # Fixated
+    fuzz[A, Z] = az*fuzz_percentage
     fuzz[B, X] = centered_rand(l * fuzz_percentage * np.cos(np.pi / 6))
     fuzz[B, Y] = centered_rand(l * fuzz_percentage * np.sin(np.pi / 6))
-    # fuzz[B, Z] = 0 # Fixated
+    fuzz[B, Z] = bx*fuzz_percentage
     fuzz[C, X] = centered_rand(l * fuzz_percentage * np.cos(np.pi / 6))
     fuzz[C, Y] = centered_rand(l * fuzz_percentage * np.sin(np.pi / 6))
-    # fuzz[C, Z] = 0 # Fixated
-    # fuzz[D, X] = 0 # Fixated
-    # fuzz[D, Y] = 0 # Fixated
+    fuzz[C, Z] = cz*fuzz_percentage
+    fuzz[D, X] = 0
+    fuzz[D, Y] = 0
     fuzz[D, Z] = (
         l * fuzz_percentage * np.random.rand()
     )  # usually higher than A is long
@@ -252,7 +256,7 @@ def cost(anchors, pos, samp):
     ---------
     anchors : 4x3 matrix of anchor positions
     pos: ux3 matrix of positions
-    samp : ux4 matrix of corresponding samples, starting with [0., 0., 0., 0.]
+    samp : ux4 matrix of corresponding samples
     """
     return np.sum(np.abs(samples_relative_to_origin_no_fuzz(anchors, pos) - samp))
 
@@ -351,12 +355,12 @@ def cost_sqsqsq_for_pos_samp(
 
 
 def anchorsvec2matrix(anchorsvec):
-    """ Create a 4x3 anchors matrix from 6 element anchors vector.
+    """ Create a 4x3 anchors matrix from anchors vector.
     """
-    anchors = np.array([[Dec(0.0),Dec(anchorsvec[0]), Dec(anchorsvec[1])],
-                        [Dec(anchorsvec[2]), Dec(anchorsvec[3]), Dec(anchorsvec[4])],
-                        [Dec(anchorsvec[5]), Dec(anchorsvec[6]), Dec(anchorsvec[7])],
-                        [Dec(0.0), Dec(0.0), Dec(anchorsvec[8])],
+    anchors = np.array([[Dec(anchorsvec[0]), Dec(anchorsvec[1]), Dec(anchorsvec[2])],
+                        [Dec(anchorsvec[3]), Dec(anchorsvec[4]), Dec(anchorsvec[5])],
+                        [Dec(anchorsvec[6]), Dec(anchorsvec[7]), Dec(anchorsvec[8])],
+                        [Dec(anchorsvec[9]), Dec(anchorsvec[10]), Dec(anchorsvec[11])],
                         ])
 
     return anchors
@@ -364,6 +368,7 @@ def anchorsvec2matrix(anchorsvec):
 
 def anchorsmatrix2vec(a):
     return [
+        a[A, X],
         a[A, Y],
         a[A, Z],
         a[B, X],
@@ -372,6 +377,8 @@ def anchorsmatrix2vec(a):
         a[C, X],
         a[C, Y],
         a[C, Z],
+        a[D, X],
+        a[D, Y],
         a[D, Z],
     ]
 
@@ -453,7 +460,6 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
         x : [A_ay A_az A_bx A_by A_bz A_cx A_cy A_cz A_dz
                x1   y1   z1   x2   y2   z2   ...  xu   yu   zu
         """
-        #spool_r = np.array(spool_r)
 
         if(len(posvec) > 0 and not type(posvec[0]) == decimal.Decimal):
             posvec = np.array([Dec(pos) for pos in posvec])
@@ -469,8 +475,8 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
         pos = np.zeros((u, 3))
         if np.size(xyz_of_samp) != 0:
             pos[0:ux] = xyz_of_samp / pos_scale
-        pos[ux:] = np.reshape(posvec, (u - ux, 3))
-
+        if u > ux:
+            pos[ux:] = np.reshape(posvec, (u - ux, 3))
 
         return _cost(
             anchors * anch_scale,
@@ -496,38 +502,40 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
     # Define bounds
     lb = np.array(
       [
-          -l_long / float(anch_scale),  # A_ay > -4000.0
-           -300.0 / float(anch_scale),  # A_az > -300.0
-            300.0 / float(anch_scale),  # A_bx > 300
-            300.0 / float(anch_scale),  # A_by > 300
-           -300.0 / float(anch_scale),  # A_bz > -300.0
-          -l_long / float(anch_scale),  # A_cx > -4000
-            300.0 / float(anch_scale),  # A_cy > 300
-           -300.0 / float(anch_scale),  # A_cz > -300.0
-           1000.0 / float(anch_scale),  # A_dz > 1000
+           -500.0 / float(anch_scale),  # A_ax >  -500
+          -l_long / float(anch_scale),  # A_ay > -l_long
+           -300.0 / float(anch_scale),  # A_az >  -300
+            300.0 / float(anch_scale),  # A_bx >   300
+              0.0 / float(anch_scale),  # A_by >     0
+           -300.0 / float(anch_scale),  # A_bz >  -300
+          -l_long / float(anch_scale),  # A_cx > -l_long
+              0.0 / float(anch_scale),  # A_cy >     0
+           -300.0 / float(anch_scale),  # A_cz >  -300
+           -500.0 / float(anch_scale),  # A_dx >  -500
+           -500.0 / float(anch_scale),  # A_dy >  -500
+           1000.0 / float(anch_scale),  # A_dz >  1000
       ]
       + [-l_short / float(pos_scale), -l_short / float(pos_scale), data_z_min / float(pos_scale)] * (u - ux)
       + [0.00005 / float(sbf_scale), 64.0 / float(sr_scale), 64.0 / float(sr_scale), 64.0 / float(sr_scale), 64.0 / float(sr_scale)]
     )
     ub = np.array(
       [
-           500.0 / float(anch_scale),  # A_ay < 500
-           200.0 / float(anch_scale),  # A_az < 200
-          l_long / float(anch_scale),  # A_bx < 4000
-          l_long / float(anch_scale),  # A_by < 4000
-           200.0 / float(anch_scale),  # A_bz < 200
+           500.0 / float(anch_scale),  # A_ax <  500
+           500.0 / float(anch_scale),  # A_ay <  500
+           200.0 / float(anch_scale),  # A_az <  200
+          l_long / float(anch_scale),  # A_bx < l_long
+          l_long / float(anch_scale),  # A_by < l_long
+           200.0 / float(anch_scale),  # A_bz <  200
           -300.0 / float(anch_scale),  # A_cx < -300
-          l_long / float(anch_scale),  # A_cy < 4000.0
-           200.0 / float(anch_scale),  # A_cz < 200
-          l_long / float(anch_scale),  # A_dz < 4000.0
+          l_long / float(anch_scale),  # A_cy < l_long
+           200.0 / float(anch_scale),  # A_cz <  200
+           500.0 / float(anch_scale),  # A_dx <  500
+           500.0 / float(anch_scale),  # A_dy <  500
+          l_long / float(anch_scale),  # A_dz < 4000
       ]
       + [l_short / float(pos_scale), l_short / float(pos_scale), 2.0 * l_short / float(pos_scale)] * (u - ux)
       + [0.1 / float(sbf_scale), 67.0 / float(sr_scale), 67.0 / float(sr_scale), 67.0 / float(sr_scale), 67.0 / float(sr_scale)]
     )
-
-    # If the user has input xyz data, then signs should be ok anyways
-    if ux > 2:
-        lb[A_bx] = -l_long
 
     # It would work to just swap the signs of bx and cx after the optimization
     # But there are fewer assumptions involved in setting correct bounds from the start instead
@@ -551,38 +559,14 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
 
     def constraints(x):
         for samp_num in range(u - ux):
-            # If A motor wound in line
-            # Then the position of measurment has negative y coordinate
-            if motor_pos_samp[samp_num][A] < 0.0:
-                x[params_anch + samp_num * 3 + Y] = -np.abs(
-                    x[params_anch + samp_num * 3 + Y]
-                )
             # If both B and C wound in line
             # Then position of measurement has positive Y coordinate
-            elif (
+            if (
                 motor_pos_samp[samp_num][B] < 0.0
                 and motor_pos_samp[samp_num][C] < 0.0
             ):
                 x[params_anch + samp_num * 3 + Y] = np.abs(
                     x[params_anch + samp_num * 3 + Y]
-                )
-            # If both A and B wound in line
-            # Then pos of meas has positive X coord
-            if (
-                motor_pos_samp[samp_num][A] < 0.0
-                and motor_pos_samp[samp_num][B] < 0.0
-            ):
-                x[params_anch + samp_num * 3 + X] = np.abs(
-                    x[params_anch + samp_num * 3 + X]
-                )
-            # If both A and C wound in line
-            # Then pos of meas has negative X coord
-            elif (
-                motor_pos_samp[samp_num][A] < 0.0
-                and motor_pos_samp[samp_num][C] < 0.0
-            ):
-                x[params_anch + samp_num * 3 + X] = -np.abs(
-                    x[params_anch + samp_num * 3 + X]
                 )
             # No sample was made with more positive x coordinate than B anchor
             if (x[params_anch + samp_num * 3 + X] > x[2]):
@@ -599,11 +583,6 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
             # No sample was made with more positive z coordinate than D anchor
             if (x[params_anch + samp_num * 3 + Z] > x[8]):
                 x[params_anch + samp_num * 3 + Z] = x[8]
-
-        #x[9] = -1000.0/pos_scale
-        #x[10] = -1000.0/pos_scale
-        #x[11] = 1000.0/pos_scale
-
         return x
 
     if method == "differentialEvolutionSolver":
@@ -818,7 +797,7 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
 
 def print_copypasteable(anch, spool_buildup_factor, spool_r):
     print(
-        "\nM669 A0.0:%.2f:%.2f B%.2f:%.2f:%.2f C%.2f:%.2f:%.2f D%.2f\nM666 Q%.6f R%.3f:%.3f:%.3f:%.3f"
+        "\nM669 A0.0:%.2f:%.2f B%.2f:%.2f:%.2f C%.2f:%.2f:%.2f D%.2f\nM666 Q%.6f R%.3f:%.3f:%.3f:%.3f\n"
         % (
             anch[A, Y],
             anch[A, Z],
@@ -839,15 +818,18 @@ def print_copypasteable(anch, spool_buildup_factor, spool_r):
 
 
 def print_anch_err(sol_anch, anchors):
-    print("\nErr_A_Y: %9.3f" % (float(sol_anch[A, Y]) - (anchors[A, Y])))
-    print("Err_A_Z: %9.3f" %   (float(sol_anch[A, Z]) - (anchors[A, Z])))
-    print("Err_B_X: %9.3f" %   (float(sol_anch[B, X]) - (anchors[B, X])))
-    print("Err_B_Y: %9.3f" %   (float(sol_anch[B, Y]) - (anchors[B, Y])))
-    print("Err_B_Z: %9.3f" %   (float(sol_anch[B, Z]) - (anchors[B, Z])))
-    print("Err_C_X: %9.3f" %   (float(sol_anch[C, X]) - (anchors[C, X])))
-    print("Err_C_Y: %9.3f" %   (float(sol_anch[C, Y]) - (anchors[C, Y])))
-    print("Err_C_Z: %9.3f" %   (float(sol_anch[C, Z]) - (anchors[C, Z])))
-    print("Err_D_Z: %9.3f" %   (float(sol_anch[D, Z]) - (anchors[D, Z])))
+    print("\nErr_A_X: %9.3f" % (float(sol_anch[A, X]) - (anchors[A, X])))
+    print("Err_A_Y: %9.3f" % (float(sol_anch[A, Y]) - (anchors[A, Y])))
+    print("Err_A_Z: %9.3f" % (float(sol_anch[A, Z]) - (anchors[A, Z])))
+    print("Err_B_X: %9.3f" % (float(sol_anch[B, X]) - (anchors[B, X])))
+    print("Err_B_Y: %9.3f" % (float(sol_anch[B, Y]) - (anchors[B, Y])))
+    print("Err_B_Z: %9.3f" % (float(sol_anch[B, Z]) - (anchors[B, Z])))
+    print("Err_C_X: %9.3f" % (float(sol_anch[C, X]) - (anchors[C, X])))
+    print("Err_C_Y: %9.3f" % (float(sol_anch[C, Y]) - (anchors[C, Y])))
+    print("Err_C_Z: %9.3f" % (float(sol_anch[C, Z]) - (anchors[C, Z])))
+    print("Err_D_X: %9.3f" % (float(sol_anch[D, X]) - (anchors[D, X])))
+    print("Err_D_Y: %9.3f" % (float(sol_anch[D, Y]) - (anchors[D, Y])))
+    print("Err_D_Z: %9.3f" % (float(sol_anch[D, Z]) - (anchors[D, Z])))
 
 
 class Store_as_array(argparse._StoreAction):
@@ -944,6 +926,7 @@ if __name__ == "__main__":
 [-54.7417, -295.772, 311.473],
 [-31.3, -54.5777, 623.788],
 [297.613, 381.752, 247.247],
+[0.0, 0.0, 0.0],
             ]
             )
 
@@ -966,6 +949,7 @@ if __name__ == "__main__":
 [-5193.15, 6360.00, 4114.80, -6810.90, ],
 [2495.85, 4269.23, 4114.20, -14112.45, ],
 [9863.85, -9667.99, 4114.20, -4033.20, ],
+[0.0, 0.0, 0.0, 0.0],
             ]
         )
 
@@ -1095,9 +1079,29 @@ if __name__ == "__main__":
             "\nWarning: Data set might be too small.\n         The below values are unreliable unless input data is extremely accurate."
         )
 
-    print_copypasteable(
-        the_cand.anch, the_cand.spool_buildup_factor, the_cand.spool_r
-    )
+    if (abs(the_cand.anch[A, X]) < 10.0 and
+        abs(the_cand.anch[D, X]) < 10.0 and
+        abs(the_cand.anch[D, Y]) < 10.0):
+        print("Result looks well rotated")
+        print_copypasteable(
+            the_cand.anch, the_cand.spool_buildup_factor, the_cand.spool_r
+        )
+    else:
+        print("Anchors don't follow the Hangprinter convention of Ax=Dx=Dy=0, and need to be rotated into place before configuring the machine")
+
+    print("Anchors:")
+    print("A=[%.2f, %.2f, %.2f]\nB=[%.2f, %.2f, %.2f]\nC=[%.2f, %.2f, %.2f]\nD=[%.2f, %.2f, %.2f]" % (the_cand.anch[A, X],
+                                                                                                      the_cand.anch[A, Y],
+                                                                                                      the_cand.anch[A, Z],
+                                                                                                      the_cand.anch[B, X],
+                                                                                                      the_cand.anch[B, Y],
+                                                                                                      the_cand.anch[B, Z],
+                                                                                                      the_cand.anch[C, X],
+                                                                                                      the_cand.anch[C, Y],
+                                                                                                      the_cand.anch[C, Z],
+                                                                                                      the_cand.anch[D, X],
+                                                                                                      the_cand.anch[D, Y],
+                                                                                                      the_cand.anch[D, Z]))
     print("Spool buildup factor:", the_cand.spool_buildup_factor) # err
     print("Spool radii:", the_cand.spool_r)
     if args["debug"]:
