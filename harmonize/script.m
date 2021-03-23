@@ -1,7 +1,7 @@
 format shortG
 anchs = [[-48.71, -1640.65, -144.91]; [1345.96, 1206.50, -125.41]; [-1399.17, 780.88, -148.90]; [-20.17, -40.76, 2555.49]]';
 R = rotmatrix(fminsearch(@(angs) minimize_me(anchs, angs), [0 0 0]));
-rotated_anchs = (R*anchs)';
+rotated_anchs = (R*anchs)'
 
 xyz_of_samps = [[-24.252, -3.89882, 200.453];
                 [62.0616, 148.425, 338.177];
@@ -19,4 +19,11 @@ xyz_of_samps = [[-24.252, -3.89882, 200.453];
                 [315.42, 630.409, 218.138]]';
 rotated_xyz_of_samps = (R*xyz_of_samps)'
 
+provided_marker_positions = [[ -55.925, -120.530,  162.885];
+                             [  64.559, -120.530,  162.885];
+                             [ 151.832,  -14.940,  162.885];
+                             [  49.327,  166.518,  162.885];
+                             [ -48.645,  167.742,  162.885];
+                             [-170.010,  -41.238,  162.885]]';
 
+rotated_provided_marker_positions = (R*provided_marker_positions)'
