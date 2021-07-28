@@ -1,6 +1,6 @@
 # This Branch Is Part Of HP4 Development. To Be Used Together With RepRapFirmware.
 
-HP4 Prototype/RepRapFirmware uses `M114 S2` to collect auto calibration data in the form of motor/encoder positions in degrees. HP3 worked differently. This branch of this repo auto calibrates based on encoder position data. That is why this branch of this repo only works with HP4, and not HP3.
+HP4 Prototype/RepRapFirmware uses `M569.3` and `M569.4` to collect auto calibration data in the form of motor/encoder positions in degrees. HP3 worked differently. This branch of this repo auto calibrates based on encoder position data. That is why this branch of this repo only works with HP4, and not HP3.
 
 # Auto Calibration Simulation for Hangprinter v4
 
@@ -54,19 +54,33 @@ Spool radii: [65.2393924  65.13533978 65.29587164 64.67297058]
 Note that these values are only test data and does not correspond to your Hangprinter setup (yet).
 
 ## How to Collect Data Points?
+
+The default way to collect data points is planned to be [hp-mark](https://gitlab.com/tobben/hp-mark).
+This has only been tested once in practice.
+See [this Youtube video](https://youtu.be/As3Y5J2NTGA).
+
+When using hp-mark, we get measured xyz-positions in addition to motor positions for each data sample.
+This helps the `simulation.py` script find better calibration values.
+
+### What if I can't run hp-mark?
+
+Then `simulation.py` can still be used without xyz-position data, but it's harder to do.
+
 Data collection depends on motor encoders (Mechaduinos, Smart Steppers, or ODrives).
-As of Mar 15, 2021, this is the procedure:
- - Go into torque mode on all motors: `G95 A15 B15 C15 D15`.
+As of July 28, 2021, this is the procedure:
+ - Go into torque mode on all motors: `M569.4 P40.0:41.0:42.0:43.0 T0.001`.
    Adjust torque magnitude as fits your particular machine.
  - Drag mover to the origin and zero the counters: `G92 X0 Y0 Z0`
- - Mark reference point for all encoders: `G96`
- - Repeat 13 - ca 20 times:
+ - Mark reference point for all encoders: `M569.3 P40.0:41.0:42.0:43.0 S`
+ - Repeat 15 - ca 20 times:
    - Drag mover to position of data point collection.
-   - Collect data point: `M114 S2`
+   - Collect data point: `M569.3 P40.0:41.0:42.0:43.0`
 
-Mar 15, 2021 note about `M114 S2`: Stock ODrive Firmware has switched from returning encoder counts to returning radians. The RepRapFirmware binary in the hangprinter
-repo has not been updated to match this change yet. Check it's date stamp right [here](https://gitlab.com/tobben/hangprinter/-/tree/version_4_dev/firmware/RepRapFirmware)
-before you use it. If it's later than March 15, 2021, then you're good. Otherwise, `M114 S2` won't work as expected with recent versions of ODrive Firmware.
+#### Note about M569.3 P parameter
+Collect data points with CAN addresses in the order A, B, C, D.
+So if your machine has A motor on addres 43.0, put 43.0 first in the list of CAN addresses following the P parameter.
+And so on for B, C, and D.
+
 
 ## How to Insert Data Points?
 Before you run the simulation, open `simulation.py` and modify the main function, near the bottom of the file.
