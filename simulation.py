@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+
 """Simulation of Hangprinter auto-calibration
 """
 from __future__ import division  # Always want 3/2 = 1.5
@@ -179,10 +181,10 @@ def samples_relative_to_origin_no_fuzz(anchors, pos):
 def motor_pos_samples_with_spool_buildup_compensation(
     anchors,
     pos,
-    spool_buildup_factor=Dec(0.008),  # Qualified first guess for 0.5 mm line
-    spool_r_in_origin=np.array([Dec(65.0), Dec(65.0), Dec(65.0), Dec(65.0)]),
+    spool_buildup_factor=Dec(0.03),  # Qualified first guess for 1.1 mm line
+    spool_r_in_origin=np.array([Dec(75.0), Dec(75.0), Dec(75.0), Dec(75.0)]),
     spool_to_motor_gearing_factor=Dec(12.75),
-    mech_adv=np.array([Dec(2.0), Dec(2.0), Dec(2.0), Dec(2.0)]),
+    mech_adv=np.array([Dec(2.0), Dec(2.0), Dec(2.0), Dec(4.0)]),
     number_of_lines_per_spool=np.array([Dec(1.0), Dec(1.0), Dec(1.0), Dec(1.0)]),
 ):
     """What motor positions (in degrees) motors would be at
@@ -218,10 +220,10 @@ def motor_pos_samples_with_spool_buildup_compensation(
 
 def motor_pos_samples_to_line_length_with_buildup_compensation(
     motor_samps,
-    spool_buildup_factor=Dec(0.008),  # Qualified first guess for 0.5 mm line
-    spool_r=np.array([Dec(65.0), Dec(65.0), Dec(65.0), Dec(65.0)]),
-    spool_to_motor_gearing_factor=Dec(12.75),  # HP4 default (255/20)
-    mech_adv=np.array([Dec(2.0), Dec(2.0), Dec(2.0), Dec(2.0)]),  # HP4 default
+    spool_buildup_factor=Dec(0.03),  # Qualified first guess for 1.1 mm line
+    spool_r=np.array([Dec(75.0), Dec(75.0), Dec(75.0), Dec(75.0)]),
+    spool_to_motor_gearing_factor=Dec(12.75),
+    mech_adv=np.array([Dec(2.0), Dec(2.0), Dec(2.0), Dec(4.0)]),
     number_of_lines_per_spool=np.array([Dec(1.0), Dec(1.0), Dec(1.0), Dec(1.0)]),  # HP4 default
 ):
     # Buildup per line times lines. Minus sign because more line in air means less line on spool
@@ -516,7 +518,7 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
            1000.0 / float(anch_scale),  # A_dz >  1000
       ]
       + [-l_short / float(pos_scale), -l_short / float(pos_scale), data_z_min / float(pos_scale)] * (u - ux)
-      + [0.00005 / float(sbf_scale), 64.0 / float(sr_scale), 64.0 / float(sr_scale), 64.0 / float(sr_scale), 64.0 / float(sr_scale)]
+      + [0.00005 / float(sbf_scale), 74.0 / float(sr_scale), 74.0 / float(sr_scale), 74.0 / float(sr_scale), 74.0 / float(sr_scale)]
     )
     ub = np.array(
       [
@@ -534,7 +536,7 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
           l_long / float(anch_scale),  # A_dz < 4000
       ]
       + [l_short / float(pos_scale), l_short / float(pos_scale), 2.0 * l_short / float(pos_scale)] * (u - ux)
-      + [0.1 / float(sbf_scale), 67.0 / float(sr_scale), 67.0 / float(sr_scale), 67.0 / float(sr_scale), 67.0 / float(sr_scale)]
+      + [0.1 / float(sbf_scale), 80.0 / float(sr_scale), 80.0 / float(sr_scale), 80.0 / float(sr_scale), 80.0 / float(sr_scale)]
     )
 
     # It would work to just swap the signs of bx and cx after the optimization
@@ -554,7 +556,7 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
     x_guess = (
             list(anchorsmatrix2vec(anchors_est))[0:params_anch]
         + list(posmatrix2vec(pos_est))
-        + [0.006 / float(sbf_scale), 64.5 / float(sr_scale), 64.5 / float(sr_scale), 64.5 / float(sr_scale), 64.5 / float(sr_scale)]
+        + [0.006 / float(sbf_scale), 74.5 / float(sr_scale), 74.5 / float(sr_scale), 74.5 / float(sr_scale), 74.5 / float(sr_scale)]
     )
 
     def constraints(x):
@@ -797,7 +799,7 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
 
 def print_copypasteable(anch, spool_buildup_factor, spool_r):
     print(
-        "\nM669 A0.0:%.2f:%.2f B%.2f:%.2f:%.2f C%.2f:%.2f:%.2f D%.2f\nM666 Q%.6f R%.3f:%.3f:%.3f:%.3f\n"
+            "\nM669 A0.0:%.2f:%.2f B%.2f:%.2f:%.2f C%.2f:%.2f:%.2f D%.2f:%.2f:%.2f\nM666 Q%.6f R%.3f:%.3f:%.3f:%.3f\n"
         % (
             anch[A, Y],
             anch[A, Z],
@@ -807,6 +809,8 @@ def print_copypasteable(anch, spool_buildup_factor, spool_r):
             anch[C, X],
             anch[C, Y],
             anch[C, Z],
+            anch[D, X],
+            anch[D, Y],
             anch[D, Z],
             spool_buildup_factor,
             spool_r[A],
@@ -922,56 +926,40 @@ if __name__ == "__main__":
     else:
         xyz_of_samp = np.array(
             [
-                # SET 1
-#[-33.6826, -8.1472, 245.819],
-#[-54.7417, -295.772, 311.473],
-#[-31.3, -54.5777, 623.788],
-#[297.613, 381.752, 247.247],
-#[0.0, 0.0, 0.0],
-                # SET 2
-#[-24.252, -3.89882, 200.453],
-#[62.0616, 148.425, 338.177],
-#[134.768, 313.042, 627.428],
-#[-73.5031, 372.327, 114.259],
-#[-417.767, 63.7061, 35.1612],
-#[-426.235, -26.9341, 365.349],
-#[-251.77, -256.638, 506.092],
-#[51.3382, -232.189, 612.346],
-#[-45.1292, -621.224, 110.024],
-#[-65.6876, -475.739, 585.481],
-#[-62.8515, -61.0257, 1041.03],
-#[-484.423, 302.271, 432.231],
-#[293.967, 344.249, 409.143],
-#[315.42, 630.409, 218.138],
-                # ROTATED SET 2
-[ -22.638,      -1.386,      200.67],
-[  60.034,      155.68,      335.27],
-[  129.85,      327.08,      621.27],
-[ -83.914,      371.74,      108.88],
-[ -419.24,      51.618,      37.436],
-[  -422.5,     -33.883,      369.08],
-[ -240.12,      -255.9,      512.09],
-[   62.89,     -220.59,      615.55],
-[ -25.451,     -620.44,      120.27],
-[ -46.891,     -467.97,      593.49],
-[ -53.261,     -46.046,      1042.3],
-[ -490.15,      294.45,      431.16],
-[  286.41,      359.55,      401.27],
-[  297.76,       643.1,      205.56],
-                # SET 3
-#[-74.9815, -88.4177, 364.777],
-#[-103.323, -269.923, 593.731],
-#[-293.484, -277.852, 178.74],
-#[-653.692, 337.247, 153.916],
-#[-282.551, 542.696, 143.892],
-#[301.104, 462.572, 100.988],
-#[284.057, 2.96509, 306.427],
-#[-29.3322, -44.4601, 852.772],
-#[-59.4153, -303.559, 861.063],
-#[-51.1483, -25.1472, 1152.81], #?
-#[174.975, -65.5056, 951.573],
-            ]
-            )
+                # First auto calib of HP4pt2
+                # [120.598, -47.4539, 10.3903],
+                # [-373.229, -128.299, 33.3251],
+                # [-227.145, 207.431, 4.89257],
+                # [76.8445, -71.1445, 706.312],
+                # [78.4024, -71.8729, 706.238],
+                # [-59.3678, -78.8227, 702.561],
+                # [-70.1781, 13.4975, 695.123],
+                # [-78.4726, 1.36425, 719.559],
+                # [-75.7426, 1.94881, 719.184],
+                # [-146.141, -11.464, 723.303],
+                # [-117.092, 107.432, 717.002],
+                # [-167.541, 72.8723, 825.57],
+                # [-16.9196, 60.6574, 822.055],
+                # [-113.799, 91.6077, 762.606],
+
+                # First auto calib of HP4pt2, rotated
+                [  117.13  ,-56.152 , 5.5463],
+                [  -380.69 , -103.71,  34.469],
+                [  -211.93 , 222.12 , 19.881],
+                [  83.552  ,-112.41 , 700.16],
+                [  85.054  ,-113.24 , 700.02],
+                [  -52.907 , -110.45,  698.81],
+                [  -57.341 , -17.342,  696.21],
+                [  -66.053 , -30.109,  720.18],
+                [  -63.296 , -29.696,  719.78],
+                [  -134.38 , -38.401,  724.65],
+                [  -97.178 , 78.367 , 723.71],
+                [  -148.09 , 41.859 , 831.42],
+                [  1.223  ,  19.45  , 824.23],
+                [  -94.235 , 60.036 , 768.39],
+
+
+            ])
 
     motor_pos_samp = args["sample_data"]
     if np.size(motor_pos_samp) != 0:
@@ -988,40 +976,22 @@ if __name__ == "__main__":
         # You might want to manually replace this with your collected data
         motor_pos_samp = np.array(
             [
-                # SET 1
-#[618.08, 1318.50, 464.85, -5560.42, ],
-#[-5193.15, 6360.00, 4114.80, -6810.90, ],
-#[2495.85, 4269.23, 4114.20, -14112.45, ],
-#[9863.85, -9667.99, 4114.20, -4033.20, ],
-#[0.0, 0.0, 0.0, 0.0],
-                # SET 2
-[528.22, 1029.38, 202.05, -4460.77, ],
-[4697.70, -1924.95, 1234.23, -7430.70, ],
-[10362.82, -2853.97, 3959.89, -13370.40, ],
-[8559.67, -3334.05, -4273.69, -1952.40, ],
-[2387.77, 6595.80, -8434.61, -152.10, ],
-[1920.75, 9024.90, -5449.76, -7418.17, ],
-[-2362.88, 9963.60, 1579.46, -10927.72, ],
-[-1028.70, 5795.33, 7119.79, -13628.77, ],
-[-13344.45, 11125.35, 8022.79, -998.25, ],
-[-6107.25, 11124.00, 8176.08, -12088.42, ],
-[7340.77, 9245.55, 8179.69, -23449.12, ],
-[9512.47, 6813.30, -9538.17, -7889.32, ],
-[9899.92, -7881.67, 5013.18, -7889.17, ],
-[15196.72, -12992.92, 3340.80, -2287.09, ],
-                # SET 3
-#[-275.40, 3844.65, 1235.70, -8251.32, ],
-#[-1925.73, 8481.86, 4861.98, -13138.80, ],
-#[-5014.53, 9434.21, -927.41, -3576.26, ],
-#[10026.15, 8665.35, -15477.55, -688.91, ],
-#[12774.00, -774.15, -9589.80, -1207.31, ],
-#[11171.85, -11395.05, 3126.30, -559.91, ],
-#[1991.21, -3382.98, 6785.43, -6441.86, ],
-#[5398.05, 6433.20, 6275.28, -19297.46, ],
-#[746.21, 10622.25, 8778.48, -19049.25, ],
-#[9686.55, 9973.95, 9609.78, -25969.65, ], #?
-#[6505.05, 4985.55, 10978.38, -21161.55, ],
-        ])
+               # First auto cal with HP4pt2
+               [-950.36,  -855.69,   2480.09,      0.00,  ],
+               [-1010.58,  6892.12 ,-5030.86,      0.00,  ],
+               [ 4553.12,  460.91,  -5390.95,      0.03,  ],
+               [ 1911.67,  3766.24,  5962.19, -26557.77,  ],
+               [ 1906.57,  3731.93,  5989.00, -26574.66,  ],
+               [ 1904.68,  5369.15,  3865.78, -26574.35,  ],
+               [ 3497.03,  4240.03,  2997.32, -26574.38,  ],
+               [ 3498.97,  4705.66,  3201.73, -27474.60,  ],
+               [ 3484.19,  4648.15,  3239.46, -27474.55,  ],
+               [ 3453.31,  5737.15,  2296.89, -27474.96,  ],
+               [ 5440.78,  3867.49,  1941.80, -27474.56,  ],
+               [ 5851.44,  5888.63,  2563.99, -31443.70,  ],
+               [ 5292.20,  4148.31,  4816.13, -31457.95,  ],
+               [ 5512.81,  4421.21,  2549.01, -29182.86,  ],
+            ])
 
     u = np.shape(motor_pos_samp)[0]
     ux = np.shape(xyz_of_samp)[0]
