@@ -1,10 +1,12 @@
+#!/usr/bin/octave
+
 format shortG
 % These are found as output of the script
 % /path/to/auto-calibration-simulation-for-hangprinter/simulation.py
-anchs = [[113.90, -1609.05, -46.93];
-         [1224.65, 1348.78, -164.20];
-         [-1464.59, 602.35, -185.01];
-         [-46.91, 115.06, 2298.91];]';
+anchs = [[114.20, -1611.56, -47.65];
+         [1225.42, 1349.40, -164.69];
+         [-1458.59, 599.47, -182.37];
+         [-47.13, 116.45, 2296.38];]';
 
 R = rotmatrix(fminsearch(@(angs) minimize_me(anchs, angs), [0 0 0]));
 rotated_anchs = (R*anchs)'
