@@ -536,7 +536,7 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
           l_long / float(anch_scale),  # A_dz < 4000
       ]
       + [l_short / float(pos_scale), l_short / float(pos_scale), 2.0 * l_short / float(pos_scale)] * (u - ux)
-      + [0.1 / float(sbf_scale), 80.0 / float(sr_scale), 80.0 / float(sr_scale), 80.0 / float(sr_scale), 80.0 / float(sr_scale)]
+      + [0.5 / float(sbf_scale), 80.0 / float(sr_scale), 80.0 / float(sr_scale), 80.0 / float(sr_scale), 80.0 / float(sr_scale)]
     )
 
     # It would work to just swap the signs of bx and cx after the optimization
