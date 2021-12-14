@@ -39,7 +39,8 @@ X = 0
 Y = 1
 Z = 2
 params_anch = 12
-params_buildup = 5  # four spool radii, one spool buildup factor
+params_buildup = 4  # four spool radii, one spool buildup factor
+constant_spool_buildup_factor = 0.1
 A_bx = 3
 A_cx = 6
 
@@ -181,7 +182,7 @@ def samples_relative_to_origin_no_fuzz(anchors, pos):
 def motor_pos_samples_with_spool_buildup_compensation(
     anchors,
     pos,
-    spool_buildup_factor=Dec(0.03),  # Qualified first guess for 1.1 mm line
+    spool_buildup_factor=Dec(0.038),  # Qualified first guess for 1.1 mm line
     spool_r_in_origin=np.array([Dec(75.0), Dec(75.0), Dec(75.0), Dec(75.0)]),
     spool_to_motor_gearing_factor=Dec(12.75),
     mech_adv=np.array([Dec(2.0), Dec(2.0), Dec(2.0), Dec(4.0)]),
@@ -220,7 +221,7 @@ def motor_pos_samples_with_spool_buildup_compensation(
 
 def motor_pos_samples_to_line_length_with_buildup_compensation(
     motor_samps,
-    spool_buildup_factor=Dec(0.03),  # Qualified first guess for 1.1 mm line
+    spool_buildup_factor=Dec(0.038),  # Qualified first guess for 1.1 mm line
     spool_r=np.array([Dec(75.0), Dec(75.0), Dec(75.0), Dec(75.0)]),
     spool_to_motor_gearing_factor=Dec(12.75),
     mech_adv=np.array([Dec(2.0), Dec(2.0), Dec(2.0), Dec(4.0)]),
@@ -450,8 +451,8 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
     def scale_back_solution(sol):
         sol[0:params_anch] *= float(anch_scale)
         sol[params_anch:-params_buildup] *= float(pos_scale)
-        sol[-params_buildup] *= float(sbf_scale)
-        sol[-params_buildup + 1 :] *= float(sr_scale)
+        #sol[-params_buildup] *= float(sbf_scale)
+        sol[-params_buildup :] *= float(sr_scale)
         return sol
 
     def costx(_cost, posvec, anchvec, spool_buildup_factor, spool_r, u):
@@ -518,7 +519,7 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
            1000.0 / float(anch_scale),  # A_dz >  1000
       ]
       + [-l_short / float(pos_scale), -l_short / float(pos_scale), data_z_min / float(pos_scale)] * (u - ux)
-      + [0.00005 / float(sbf_scale), 74.0 / float(sr_scale), 74.0 / float(sr_scale), 74.0 / float(sr_scale), 74.0 / float(sr_scale)]
+      + [74.0 / float(sr_scale), 74.0 / float(sr_scale), 74.0 / float(sr_scale), 74.0 / float(sr_scale)]
     )
     ub = np.array(
       [
@@ -536,7 +537,7 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
           l_long / float(anch_scale),  # A_dz < 4000
       ]
       + [l_short / float(pos_scale), l_short / float(pos_scale), 2.0 * l_short / float(pos_scale)] * (u - ux)
-      + [0.5 / float(sbf_scale), 80.0 / float(sr_scale), 80.0 / float(sr_scale), 80.0 / float(sr_scale), 80.0 / float(sr_scale)]
+      + [80.0 / float(sr_scale), 80.0 / float(sr_scale), 80.0 / float(sr_scale), 80.0 / float(sr_scale)]
     )
 
     # It would work to just swap the signs of bx and cx after the optimization
@@ -556,7 +557,7 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
     x_guess = (
             list(anchorsmatrix2vec(anchors_est))[0:params_anch]
         + list(posmatrix2vec(pos_est))
-        + [0.006 / float(sbf_scale), 74.5 / float(sr_scale), 74.5 / float(sr_scale), 74.5 / float(sr_scale), 74.5 / float(sr_scale)]
+        + [74.5 / float(sr_scale), 74.5 / float(sr_scale), 74.5 / float(sr_scale), 74.5 / float(sr_scale)]
     )
 
     def constraints(x):
@@ -610,8 +611,8 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
                 cost_sq_for_pos_samp,
                 x[params_anch:-params_buildup],
                 x[0:params_anch],
-                x[-params_buildup],
-                x[-params_buildup + 1 :],
+                constant_spool_buildup_factor,
+                x[-params_buildup :],
                 u,
             )),
             termination=stop,
@@ -674,8 +675,8 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
                 cost_sq_for_pos_samp,
                 x[params_anch:-params_buildup],
                 x[0:params_anch],
-                x[-params_buildup],
-                x[-params_buildup + 1 :],
+                constant_spool_buildup_factor,
+                x[-params_buildup :],
                 u,
             )),
             bounds=list(zip(lb, ub)),
@@ -718,8 +719,8 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
                     cost_sq_for_pos_samp,
                     x[params_anch:-params_buildup],
                     x[0:params_anch],
-                    x[-params_buildup],
-                    x[-params_buildup + 1 :],
+                    constant_spool_buildup_factor,
+                    x[-params_buildup :],
                     u,
                 ))
             )
@@ -752,8 +753,8 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
                     cost_sq_for_pos_samp,
                     x[params_anch:-params_buildup],
                     x[0:params_anch],
-                    x[-params_buildup],
-                    x[-params_buildup + 1 :],
+                    constant_spool_buildup_factor,
+                    x[-params_buildup :],
                     u,
                 )),
                 random_guess,
@@ -779,8 +780,8 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
                 cost_sq_for_pos_samp,
                 x[params_anch:-params_buildup],
                 x[0:params_anch],
-                x[-params_buildup],
-                x[-params_buildup + 1 :],
+                constant_spool_buildup_factor,
+                x[-params_buildup :],
                 u,
             )),
             x_guess,
@@ -926,37 +927,82 @@ if __name__ == "__main__":
     else:
         xyz_of_samp = np.array(
             [
-                # First auto calib of HP4pt2
-                #[120.598, -47.4539, 10.3903],
-                #[-373.229, -128.299, 33.3251],
-                #[-227.145, 207.431, 4.89257],
-                #[76.8445, -71.1445, 706.312],
-                #[78.4024, -71.8729, 706.238],
-                #[-59.3678, -78.8227, 702.561],
-                #[-70.1781, 13.4975, 695.123],
-                #[-78.4726, 1.36425, 719.559],
-                #[-75.7426, 1.94881, 719.184],
-                #[-146.141, -11.464, 723.303],
-                #[-117.092, 107.432, 717.002],
-                #[-167.541, 72.8723, 825.57],
-                #[-16.9196, 60.6574, 822.055],
-                #[-113.799, 91.6077, 762.606],
+              # 2.69 - 6.21
+              #[    0.00000  ,   0.00000 ,    0.00000],
+              #[ -123.82562  ,-619.68595 ,   92.35216],
+              #[ -619.11762  ,  81.27875 ,   92.08756],
+              #[ -481.39162  , 482.21305 ,  109.71686],
+              #[  -64.28762  , 520.94205 ,   61.77066],
+              #[  341.66138  , 453.37105 ,   67.26516],
+              #[  603.22738  , 632.80805 ,  162.22786],
+              #[  378.60338  , 139.17405 ,   27.73066],
+              #[   53.08898  ,  53.11585 ,  261.33186],
+              #[  -53.04652  ,-653.08295 ,  390.77486],
+              ##[ -388.64762  ,-150.42595 ,  334.86486],
+              #[ -506.30062  , 378.23705 ,  392.95686],
+              #[   -3.73031  , 499.74305 ,  346.05986],
+              #[   15.50068  , 162.46905 ,  818.15386],
+              #[   11.38768  , 204.25705 ,  996.44486],
+              #[  -67.19142  , -21.00245 , 1177.34786],
 
-                # First auto calib of HP4pt2, rotated
-                [117.13  ,-56.163  ,5.5005],
-                [-380.7  ,-103.72  ,34.428],
-                [-211.91 , 222.12  ,20.043],
-                [83.597  ,-112.88  ,700.08],
-                [85.099  ,-113.71  ,699.94],
-                [-52.862 , -110.91 , 698.74],
-                [-57.291 , -17.8   ,696.21],
-                [-66.002 , -30.582 , 720.16],
-                [-63.245 , -30.169 , 719.76],
-                [-134.33 , -38.873 , 724.64],
-                [-97.121 , 77.893  ,723.77],
-                [-148.03 , 41.316  ,831.46],
-                [1.2846  ,18.904   ,824.25],
-                [-94.176 , 59.532  ,768.44],
+    #[0.264657, -0.108066, 0.229668],
+    #[-52.1386, -574.662, 76.4085],
+    #[-342.879, -305.663, 51.4928],
+    #[-490.703, 148.788, 70.2698],
+    [-204.986, 481.404, 61.3799],
+    [286.227, 478.716, 63.8561],
+    #[9.03659, 149.714, 432.675],
+    #[-278.096, -226.392, 545.095],
+    [120.141, -71.862, 587.729],
+    [-217.577, 293.977, 626.494],
+    [-479.619, 188.839, 756.471],
+    #[-37.9616, 26.5831, 978.173],
+    #[52.2269, -34.8606, 1150.44],
+    #[361.612, 397.268, 877.265],
+    [233.685, 351.62, 469.438],
+    [67.3321, 325.857, 239.275],
+    #[-285.146, 35.0244, 0],#-2.88928],
+    [-198.748, 63.0038, 0],# 1.21828],
+    # Tried taking measurements only on the bed.
+    [0.315936, -0.23533, 0], # 0.74649],
+    [-97.4069, 52.5763,  0], # 0.860578],
+    [-61.9536, 165.719,  0], # 0.370119],
+    [99.6092, 192.1,     0], #-2.64195],
+    #[312.394, -183.044,  0], #-1.18572],
+    [88.8442, -340.808,  0], # 0.80152],
+    [-381.458, -352.703, 0], # 6.55379],
+    [-362.571, 8.45596,  0], # 4.56484],
+    [-375.109, 256.785,  0], # 1.93014],
+    [-381.863, 500.241,  0], #-0.387986],
+    [-79.1355, 492.18,   0], #-0.518529],
+    [134.763, 494.109,   0], #-0.0430098],
+    [337.757, 492.722,   0], # 0.351505],
+    [326.147, 60.5438,   0], #-0.413865],
+    [-48.7167, -326.732, 0], # 2.15929],
+    [-1.86399, -34.6713, 744.696],
+    #[-42.6718, -4.3948, 1199.5],
+
+# Tried running very slack lines, and resetting encoder ref often. Didn't work very well
+#[-34.7838, 81.2349, 305.987],
+#[-161.443, -292.464, 232.128],
+##[-256.746, 182.5, 26.9903],
+#[-64.6129, 446.943, 41.6279],
+#[124.239, 323.619, 23.0548],
+#[5.93825, 255.684, 421.826],
+##[-47.6317, 223.034, 525.205],
+##[-115.472, 191.321, 630.36],
+##[-104.17, -178.547, 18.2374],
+#[-125.64, -46.9199, 412.309],
+#[-156.797, 90.4363, 620.426],
+##[-272.022, 181.902, 848.714],
+#[-216.176, 182.714, 950.615],
+#[-158.198, 170.141, 1043.47],
+#[-103.331, 162.605, 1096.67],
+#[-38.3709, 223.777, 1050.4],
+#[38.7464, 284.645, 982.725],
+#[-23.9664, 67.2408, 955.233],
+##[294.845, -212.823, 25.4843],
+#[-388.83, -58.4433, 37.0154],
             ])
 
     motor_pos_samp = args["sample_data"]
@@ -974,21 +1020,83 @@ if __name__ == "__main__":
         # You might want to manually replace this with your collected data
         motor_pos_samp = np.array(
             [
-               # First auto cal with HP4pt2
-               [-950.36,  -855.69,   2480.09,      0.00,  ],
-               [-1010.58,  6892.12 ,-5030.86,      0.00,  ],
-               [ 4553.12,  460.91,  -5390.95,      0.03,  ],
-               [ 1911.67,  3766.24,  5962.19, -26557.77,  ],
-               [ 1906.57,  3731.93,  5989.00, -26574.66,  ],
-               [ 1904.68,  5369.15,  3865.78, -26574.35,  ],
-               [ 3497.03,  4240.03,  2997.32, -26574.38,  ],
-               [ 3498.97,  4705.66,  3201.73, -27474.60,  ],
-               [ 3484.19,  4648.15,  3239.46, -27474.55,  ],
-               [ 3453.31,  5737.15,  2296.89, -27474.96,  ],
-               [ 5440.78,  3867.49,  1941.80, -27474.56,  ],
-               [ 5851.44,  5888.63,  2563.99, -31443.70,  ],
-               [ 5292.20,  4148.31,  4816.13, -31457.95,  ],
-               [ 5512.81,  4421.21,  2549.01, -29182.86,  ],
+              # 2.69 - 6.21
+               #[0.08, -0.09, 0.02, 0.07,  ],
+               #[-11322.26, 10671.24, 5570.10, -8.44,  ],
+               #[3923.52, 8784.62, -10286.11, -8.44,  ],
+               #[10618.99, 3014.15, -11497.19, -8.05,  ],
+               #[10201.60, -4597.22, -4270.71, -8.11,  ],
+               #[9400.30, -10294.90, 3571.52, -8.63,  ],
+               #[14043.46, -15620.91, 8456.95, -8.33,  ],
+               #[3556.58, -6801.43, 5730.90, -8.44,  ],
+               #[1893.61, -549.20, 1291.20, -10092.20,  ],
+               #[-9968.34, 11353.31, 8080.09, -10965.66,  ],
+               ##[-551.60, 8531.36, -3109.13, -10962.83,  ],
+               #[9816.94, 5356.14, -9326.25, -10958.67,  ],
+               #[10639.94, -4162.47, -1739.80, -10962.80,  ],
+               #[7722.88, 2668.66, 4137.54, -30918.56,  ],
+               #[10111.46, 4188.95, 5740.49, -37345.98,  ],
+               #[8635.37, 9462.21, 8351.71, -44597.92,  ],
+
+                #[0.00, 0.00, 0.03, 0.07,  ],
+                #[-10711.32, 9086.19, 5890.61, 1.87,  ],
+                #[-4834.69, 8918.49, -1755.01, 1.12,  ],
+                #[4324.38, 5983.12, -9325.91, 1.23,  ],
+                [9568.20, -1954.78, -6728.08, 1.80,  ],
+                [9679.44, -9815.10, 2424.67, 1.39,  ],
+                #[4464.19, -208.78, 749.31, -16379.62,  ],
+                #[-1039.19, 9007.74, 703.11, -19181.26,  ],
+                [1610.73, 2192.66, 5428.78, -22385.79,  ],
+                [8571.15, 2945.31, -2174.37, -22384.61,  ],
+                [8610.92, 8887.24, -3690.93, -25555.04,  ],
+                #[6925.65, 6450.74, 5969.91, -37230.96,  ],
+                #[7971.99, 7963.15, 9696.65, -43839.60,  ],
+                #[12669.35, -3213.94, 9162.58, -30161.25,  ],
+                [8612.37, -5273.09, 3779.56, -16405.40,  ],
+                [6864.52, -4144.30, -358.82, -8330.11,  ],
+                #[1188.94, 3694.39, -4979.97, 692.20,  ],
+                [1465.66, 2095.35, -3899.67, 385.29,  ],
+                # Tried taking measurements only on the bed.
+                [0.00, -0.08, -0.12, 0.00,  ],
+                [1073.93, 711.24, -2111.09, 197.72,  ],
+                [3200.32, -1156.25, -2440.45, 292.29,  ],
+                [3729.87, -3860.43, 240.16, 360.79,  ],
+                #[-2982.92, -1258.83, 7256.57, 1097.06,  ],
+                [-6423.30, 3696.84, 4938.21, 1026.52,  ],
+                [-5569.06, 10006.12, -1711.93, 2337.86,  ],
+                [973.44, 5270.84, -5980.70, 1178.80,  ],
+                [5663.11, 2834.60, -8541.25, 1846.55,  ],
+                [10299.34, 842.02, -10208.01, 3417.89,  ],
+                [9501.16, -4269.03, -4620.67, 2131.01,  ],
+                [9583.11, -7789.53, -608.77, 2156.84,  ],
+                [9992.16, -10926.45, 3247.88, 2801.00,  ],
+                [1739.14, -5099.11, 5228.41, 815.94,  ],
+                [-6191.53, 5181.06, 2649.17, 924.97,  ],
+                [3542.39, 4499.68, 4533.41, -28439.68,  ],
+                #[8968.50, 9261.29, 8880.61, -45512.04,  ],
+
+# Tried running very slack lines, and resetting encoder ref often. Didn't work very well
+#[2522.42, 516.85, -160.84, -11672.32,  ],
+#[-4603.82, 6803.66, 1294.93, -7780.62,  ],
+##[3947.39, 1748.78, -5869.33, -10.95,  ],
+#[8708.42, -4021.50, -4004.91, -10.88,  ],
+#[6357.65, -5773.03, 1.04, -2.14,  ],
+#[6388.15, -1389.99, 9.15, -15561.39,  ],
+##[6435.04, 445.69, 8.30, -19449.01,  ],
+##[6650.32, 2544.16, 9.58, -23336.55,  ],
+##[-3283.56, 3864.41, 110.86, -0.79,  ],
+#[847.66, 3913.36, 111.57, -15559.50,  ],
+#[4820.75, 4127.26, 111.34, -23334.55,  ],
+##[8566.25, 6692.33, 326.37, -31120.34,  ],
+#[9459.57, 6897.44, 2190.06, -35014.12,  ],
+#[10104.12, 7196.57, 4260.36, -38907.65,  ],
+#[10508.50, 7154.81, 5669.56, -41134.57,  ],
+#[10948.97, 5231.50, 5669.69, -39282.11,  ],
+#[11240.81, 2923.28, 5669.65, -36403.05,  ],
+#[7389.88, 5635.56, 5669.07, -36402.26,  ],
+##[-3485.16, -549.44, 7045.93, 0.03,  ],
+#[-88.80, 6527.68, -5460.16, 0.09,  ],
+
             ])
 
     u = np.shape(motor_pos_samp)[0]
@@ -1006,8 +1114,8 @@ if __name__ == "__main__":
     def computeCost(solution):
         anch = np.zeros((4, 3))
         anch = anchorsvec2matrix(solution[0:params_anch])
-        spool_buildup_factor = Dec(solution[-params_buildup])
-        spool_r = np.array([Dec(x) for x in solution[-params_buildup + 1 :]])
+        spool_buildup_factor = constant_spool_buildup_factor #Dec(solution[-params_buildup])
+        spool_r = np.array([Dec(x) for x in solution[-params_buildup :]])
         pos = np.zeros((u, 3))
         if np.size(xyz_of_samp) != 0:
             pos = np.vstack(
@@ -1024,7 +1132,7 @@ if __name__ == "__main__":
             anch,
             pos,
             motor_pos_samp,
-            spool_buildup_factor,
+            constant_spool_buildup_factor,
             spool_r,
         ))
 
@@ -1034,7 +1142,7 @@ if __name__ == "__main__":
         name = "no_name"
         solution = np.zeros(ndim)
         anch = np.zeros((4, 3))
-        spool_buildup_factor = 0.0
+        spool_buildup_factor = constant_spool_buildup_factor
         cost = 9999.9
         pos = np.zeros(3 * (u - ux))
 
@@ -1047,8 +1155,8 @@ if __name__ == "__main__":
                 print("%s has cost %e" % (self.name, self.cost))
                 np.set_printoptions(suppress=True)
                 self.anch = anchorsvec2matrix(self.solution[0:params_anch])
-                self.spool_buildup_factor = self.solution[-params_buildup]
-                self.spool_r = self.solution[-params_buildup + 1 :]
+                self.spool_buildup_factor = constant_spool_buildup_factor #self.solution[-params_buildup]
+                self.spool_r = self.solution[-params_buildup :]
                 if np.size(xyz_of_samp) != 0:
                     self.pos = np.vstack(
                         (
@@ -1121,11 +1229,9 @@ if __name__ == "__main__":
         abs(the_cand.anch[D, X]) < 10.0 and
         abs(the_cand.anch[D, Y]) < 10.0):
         print("Result looks well rotated")
-        print_copypasteable(
-            the_cand.anch, the_cand.spool_buildup_factor, the_cand.spool_r
-        )
-    else:
-        print("Anchors don't follow the Hangprinter convention of Ax=Dx=Dy=0, and need to be rotated into place before configuring the machine")
+    print_copypasteable(
+        the_cand.anch, the_cand.spool_buildup_factor, the_cand.spool_r
+    )
 
     print("Anchors:")
     print("A=[%.2f, %.2f, %.2f]\nB=[%.2f, %.2f, %.2f]\nC=[%.2f, %.2f, %.2f]\nD=[%.2f, %.2f, %.2f]" % (the_cand.anch[A, X],
