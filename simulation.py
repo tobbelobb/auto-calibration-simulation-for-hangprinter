@@ -800,8 +800,9 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
 
 def print_copypasteable(anch, spool_buildup_factor, spool_r):
     print(
-            "\nM669 A0.0:%.2f:%.2f B%.2f:%.2f:%.2f C%.2f:%.2f:%.2f D%.2f:%.2f:%.2f\nM666 Q%.6f R%.3f:%.3f:%.3f:%.3f\n"
+            "\nM669 A%.2f:%.2f:%.2f B%.2f:%.2f:%.2f C%.2f:%.2f:%.2f D%.2f:%.2f:%.2f\nM666 Q%.6f R%.3f:%.3f:%.3f:%.3f\n"
         % (
+            anch[A, X],
             anch[A, Y],
             anch[A, Z],
             anch[B, X],
