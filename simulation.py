@@ -752,7 +752,7 @@ class Store_as_array(argparse._StoreAction):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-            description="Figure out where Hangprinter anchors are by looking at line difference samples. Practical tips: Your best bet is to collect many samples (> 20), know the xyz of at least a couple of them."
+        description="Find best Hangprinter config based on true line lengths, line difference samples, and xyz positions if known."
     )
     parser.add_argument(
         "-d", "--debug", help="Print debug information", action="store_true"
