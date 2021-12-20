@@ -44,29 +44,34 @@ If it works (should finish in a few seconds/minutes), then the bottom part of yo
 SLSQP
 Hit Ctrl+C and wait a bit to stop solver and get current best solution.
 number of samples: 26
-input xyz coords:  60
-total cost:        3.082877e+01
-cost per sample:   1.185722e+00
+input xyz coords:  15
+total cost:        6.955602e+00
+cost per sample:   2.675232e-01
 
-M669 A14.25:-1592.61:-117.53 B1293.67:1233.34:-165.28 C-1397.97:727.94:-141.72 D24.32:0.48:2354.87
-M666 Q0.050000 R75.841:75.831:75.614:75.624
+M669 A15.81:-1591.97:-125.62 B1294.58:1231.78:-169.71 C-1397.45:727.84:-147.24 D23.90:1.86:2354.88
+M666 Q0.050000 R75.849:75.831:75.428:75.142
 
 ```
 Note that these values are only test data and does not correspond to your Hangprinter setup (yet).
 
 ## How to Collect Data Points?
 
-The default way to collect data points is planned to be [hp-mark](https://gitlab.com/tobben/hp-mark).
-See [this Youtube video](https://youtu.be/As3Y5J2NTGA).
+There's a script called `get_auto_calibration_data_automatically.sh` in the hp-mark repo that semi-automates the data collection.
+See https://gitlab.com/tobben/hp-mark/-/tree/master/use.
+
+I use the following flags and settings:
+```
+DATA_SERIES_NAME="anchor-calibration-0" ./get_auto_calibration_data_automatically.sh --try-hard --bed-reference --reprojection-error-limit 0.5 --show result
+```
 
 When using hp-mark, we get measured xyz-positions in addition to motor positions for each data sample.
-This helps the `simulation.py` script find better calibration values.
+This guides the `simulation.py` script when searching for better calibration values.
 
 ### What if I can't run hp-mark?
 
 Then `simulation.py` can still be used without xyz-position data, but it's harder to do.
 
-Data collection depends on motor encoders (Mechaduinos, Smart Steppers, or ODrives).
+Data collection depends on motor encoders (ODrives).
 As of July 28, 2021, this is the procedure:
  - Go into torque mode on all motors: `M569.4 P40.0:41.0:42.0:43.0 T0.001`.
    Adjust torque magnitude as fits your particular machine.
@@ -75,7 +80,6 @@ As of July 28, 2021, this is the procedure:
  - Repeat 15 - ca 20 times:
    - Drag mover to position of data point collection.
    - Collect data point: `M569.3 P40.0:41.0:42.0:43.0`
-
 
 ## Line Length Data
 The program wants to find line lengths that match your physical setup.
@@ -97,45 +101,61 @@ motor_pos_samp = np.array(
     ])
 xyz_of_samp = np.array(
     [
-        [??, ??, ??, ??],
-        [??, ??, ??, ??]
+        [??, ??, ??],
+        [??, ??, ??]
     ])
 line_lengths_origin = np.array([??, ??, ??, ??])
 ...
 ```
+
+The first `motor_pos_samp` quadruplet corresponds to the first `xyz_of_samp` triplet and so on.
+It's ok to have more `motor_pos_samp` quadruplets than there are `xyz_of_samp` triplets.
+
 When values are inserted, you can run with no `-x`/`-s`/`-l` flags
 ```bash
 python ./simulation.py
 ```
 
 ## Output Explanation
-The first block give some stats trying to describe the quality of the parameters that were found
+The first two lines describe which numerical optimizer is beeing used, and how you can stop it should you want to
+```
+SLSQP
+Hit Ctrl+C and wait a bit to stop solver and get current best solution.
+```
+
+The rest for the first block is printed after the optimization finished.
+It describes the quality of the parameters that were found
 ```
 number of samples: 26
-input xyz coords:  60
-total cost:        3.082877e+01
-cost per sample:   1.185722e+00
+input xyz coords:  15
+total cost:        6.955602e+00
+cost per sample:   2.675232e-01
 ```
 It's recommended that the sum of `number of samples + (input xyz coords)/3` should be above 12.
 Using fewer samples makes it probable that the solver finds bogus anchor positions that still minimizes cost.
+The program will print a warning if you have too few data points.
 
 Ideal data points collected on an ideal machine would give `total cost: 0.000000` for any sample size above 10.
 In real life this does not happen.
 The `cost per sample` value let you compare results from your different data sets of unequal size.
+In my experience, a `cost per sample` below 1.0, in combination with a large number of samples (>20) and
+a >12 number of input xyz coords, generally means you've found yourself a very good config.
 
-The second block contains the anchor positions that the script found.
+The second block contains the anchor positions and spool radii that the script found to work best.
 They are formatted so they can be pasted directly into RepRapFirmware's configuration.
 ```
-M669 A14.25:-1592.61:-117.53 B1293.67:1233.34:-165.28 C-1397.97:727.94:-141.72 D24.32:0.48:2354.87
-M666 Q0.050000 R75.841:75.831:75.614:75.624
+M669 A15.81:-1591.97:-125.62 B1294.58:1231.78:-169.71 C-1397.45:727.84:-147.24 D23.90:1.86:2354.88
+M666 Q0.050000 R75.849:75.831:75.428:75.142
 ```
 
 
 ## Alternative Optimization Algorithms
+I've never met a situation that required alternative optimization algorithms, but they exist.
+
 The script accepts a `-m` or `--method` argument.
-Try for example
+Try for example (warning, will print a lot of debug output):
 ```bash
-python ./simulation.py --method L-BFGS-B -d
+python ./simulation.py --method L-BFGS-B --debug
 ```
 ... the default [`SLSQP`](https://en.wikipedia.org/wiki/Sequential_quadratic_programming), and the [`L-BFGS-B`](https://en.wikipedia.org/wiki/Limited-memory_BFGS) methods
 have slightly different characteristics.
