@@ -81,6 +81,23 @@ As of July 28, 2021, this is the procedure:
    - Drag mover to position of data point collection.
    - Collect data point: `M569.3 P40.0:41.0:42.0:43.0`
 
+Note that even if you don't run hp-mark, you still need some known xyz-positions for the algorithm to work.
+You can hand measure 4-6 xy-positions on your print bed (z=0), and then collect data points with known xyz-positions there.
+
+You will need to type your known positions into `simulation.py` by hand, in the right order.
+
+Your hand measurements of xy-positions need a pair of XY-axes to measure along.
+Draw a line from your origin point through the middle of your A-anchor.
+(No need for perfection, but roughly.)
+That's your negative y-axis.
+
+Your B-anchor is on the positive x-side.
+Your C-anchor is on the negative x-side.
+Both B anc C anchors are on the positive y-side of your origin.
+
+Your D-anchor should be roughly vertically above your origin.
+(Again, no need for perfection, but roughly.)
+
 ## Line Length Data
 The program wants to find line lengths that match your physical setup.
 Hand measure your four line lengths when your nozzle is at the origin,
