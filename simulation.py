@@ -319,7 +319,7 @@ def cost_sq(anchors, pos, samp):
 
 
 def cost_sq_for_pos_samp(
-    anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r
+    anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r, line_lengths_origin
 ):
     """
     Sum of squares
@@ -389,7 +389,7 @@ def pre_list(l, num):
     )
 
 
-def solve(motor_pos_samp, xyz_of_samp, method):
+def solve(motor_pos_samp, xyz_of_samp, line_lengths_origin, method, debug=False):
     """Find reasonable positions and anchors given a set of samples.
     """
 
@@ -399,7 +399,7 @@ def solve(motor_pos_samp, xyz_of_samp, method):
     ux = np.shape(xyz_of_samp)[0]
     number_of_params_pos = 3 * (u - ux)
 
-    def costx(_cost, posvec, anchvec, spool_buildup_factor, spool_r, u):
+    def costx(_cost, posvec, anchvec, spool_buildup_factor, spool_r, u, line_lengths_origin):
         """Identical to cost, except the shape of inputs and capture of samp, xyz_of_samp, ux, and u
 
         Parameters
@@ -427,6 +427,7 @@ def solve(motor_pos_samp, xyz_of_samp, method):
             motor_pos_samp[:u],
             spool_buildup_factor,
             spool_r,
+            line_lengths_origin,
         )
 
     l_long = 4000.0
@@ -497,7 +498,7 @@ def solve(motor_pos_samp, xyz_of_samp, method):
     )
 
     disp = False
-    if args["debug"]:
+    if debug:
         disp = True
 
     if method == "differentialEvolutionSolver":
@@ -527,6 +528,7 @@ def solve(motor_pos_samp, xyz_of_samp, method):
                 constant_spool_buildup_factor,
                 x[-params_buildup :],
                 u,
+                line_lengths_origin,
             ),
             termination=stop,
             strategy=Best1Bin,
@@ -593,6 +595,7 @@ def solve(motor_pos_samp, xyz_of_samp, method):
                 constant_spool_buildup_factor,
                 x[-params_buildup :],
                 u,
+                line_lengths_origin,
             )),
             bounds=list(zip(lb, ub)),
             stop=stop,
@@ -639,6 +642,7 @@ def solve(motor_pos_samp, xyz_of_samp, method):
                     constant_spool_buildup_factor,
                     x[-params_buildup :],
                     u,
+                    line_lengths_origin,
                 )
             )
             if solver.bestEnergy < best_cost:
@@ -676,6 +680,7 @@ def solve(motor_pos_samp, xyz_of_samp, method):
                     constant_spool_buildup_factor,
                     x[-params_buildup :],
                     u,
+                    line_lengths_origin,
                 ),
                 random_guess,
                 method="SLSQP",
@@ -703,6 +708,7 @@ def solve(motor_pos_samp, xyz_of_samp, method):
                 constant_spool_buildup_factor,
                 x[-params_buildup :],
                 u,
+                line_lengths_origin,
             ),
             x_guess,
             method="L-BFGS-B",
@@ -899,13 +905,14 @@ if __name__ == "__main__":
             )
         else:
             pos = np.reshape([x for x in solution[params_anch:-params_buildup]], (u, 3))
-        return float(cost_sq_for_pos_samp(
+        return cost_sq_for_pos_samp(
             anch,
             pos,
             motor_pos_samp,
             constant_spool_buildup_factor,
             spool_r,
-        ))
+            line_lengths_origin
+        )
 
     ndim = 3 * (u - ux) + params_anch + params_buildup
 
@@ -950,7 +957,7 @@ if __name__ == "__main__":
                 candidate(
                     cand_name,
                     solve(
-                        motor_pos_samp, xyz_of_samp, cand_name
+                        motor_pos_samp, xyz_of_samp, line_lengths_origin, cand_name, args["debug"]
                         ),
                     )
                 for cand_name in [
@@ -970,7 +977,9 @@ if __name__ == "__main__":
             solve(
                 motor_pos_samp,
                 xyz_of_samp,
-                args["method"]
+                line_lengths_origin,
+                args["method"],
+                args["debug"]
             ),
         )
 

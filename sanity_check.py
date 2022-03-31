@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+
 from simulation import *
 
 # Simulate some exact data
@@ -10,18 +12,17 @@ anchors = np.array(
                       ]
                   )
 pos = positions(3, 200, 0)
-how_many = 6
+how_many = 4
 pos = pos[:how_many]
 print("pos=\n",pos)
-radii = np.array([65.0, 65.0, 65.0, 65.0])
-samp = motor_pos_samples_with_spool_buildup_compensation(anchors, pos, 0.008, radii)
-solution = solve(samp, pos, "SLSQP")
+radii = np.array([75.0, 75.0, 75.0, 75.0])
+samp = motor_pos_samples_with_spool_buildup_compensation(anchors, pos, constant_spool_buildup_factor, radii)
+line_lengths_origin = np.linalg.norm(anchors, 2, 1)
+solution = solve(samp, pos, line_lengths_origin, "SLSQP")
 
 np.set_printoptions(precision=12)
 np.set_printoptions(suppress=True)  # No scientific notation
 print("Anchor errors:")
 print(anchorsvec2matrix(solution[:12]) - anchors)
-print("Buildup factor error:")
-print(np.array([solution[12] - 0.008]))
 print("Spool radii errors:")
-print(solution[13:] - radii)
+print(solution[12:] - radii)
