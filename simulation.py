@@ -11,6 +11,8 @@ import sys
 import signal
 import time
 
+from hangprinter_forward_transform import forward_transform
+
 # Config values should be based on HP4 defaults
 
 constant_spool_buildup_factor = 0.05 # Qualified first guess for 1.1 mm line
@@ -205,7 +207,7 @@ def samples_relative_to_origin(anchors, pos, fuzz=1):
     )
 
 
-def samples_relative_to_origin_no_fuzz(anchors, pos):
+def distance_samples_relative_to_origin_no_fuzz(anchors, pos):
     """Possible relative line length measurments according to anchors and position.
 
     Parameters
@@ -249,7 +251,7 @@ def motor_pos_samples_with_spool_buildup_compensation(
     ) / (2.0 * np.pi)
     k0 = 2.0 * degrees_per_unit_times_r / k2
 
-    relative_line_lengths = samples_relative_to_origin_no_fuzz(anchors, pos)
+    relative_line_lengths = distance_samples_relative_to_origin_no_fuzz(anchors, pos)
     motor_positions = k0 * (
         np.sqrt(spool_r_in_origin_sq + relative_line_lengths * k2)
         - spool_r_in_origin
@@ -300,7 +302,7 @@ def cost(anchors, pos, samp):
     pos: ux3 matrix of positions
     samp : ux4 matrix of corresponding samples
     """
-    return np.sum(np.abs(samples_relative_to_origin_no_fuzz(anchors, pos) - samp))
+    return np.sum(np.abs(distance_samples_relative_to_origin_no_fuzz(anchors, pos) - samp))
 
 
 def cost_sq(anchors, pos, samp):
@@ -314,7 +316,7 @@ def cost_sq(anchors, pos, samp):
     (sqrt((A_dx-x_i)^2 + (A_dy-y_i)^2 + (A_dz-z_i)^2) - sqrt(A_dx^2 + A_dy^2 + A_dz^2) - t_id)^2
     """
     return np.sum(
-        pow((samples_relative_to_origin_no_fuzz(anchors, pos) - samp), 2)
+        pow((distance_samples_relative_to_origin_no_fuzz(anchors, pos) - samp), 2)
     )
 
 
@@ -336,13 +338,28 @@ def cost_sq_for_pos_samp(
 
     return np.sum(
         pow(
-            samples_relative_to_origin_no_fuzz(anchors, pos)
+            distance_samples_relative_to_origin_no_fuzz(anchors, pos)
             - motor_pos_samples_to_line_length_with_buildup_compensation(
                 motor_pos_samp, spool_buildup_factor, spool_r
+            # TODO: minus flexlength in that position
             ),
             2,
         ) + line_lengths_origin_err.dot(line_lengths_origin_err)
     )
+
+def cost_sq_for_pos_samp_forward_transform(
+    anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r, line_lengths_origin
+):
+    line_lengths_origin_err = np.linalg.norm(anchors, 2, 1) - line_lengths_origin
+    line_length_samp = motor_pos_samples_to_line_length_with_buildup_compensation(
+                         motor_pos_samp, spool_buildup_factor, spool_r
+                       )
+    tot_err = 0
+    for i in range(np.size(line_length_samp, 0)):
+        diff = pos[i] - forward_transform(anchors, line_length_samp[i])
+        tot_err += diff.dot(diff)
+
+    return tot_err
 
 
 def anchorsvec2matrix(anchorsvec):
@@ -522,7 +539,7 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_origin, method, debug=False)
         solver.enable_signal_handler()  # Handle Ctrl+C gracefully. Be restartable
         solver.Solve(
             lambda x: costx(
-                cost_sq_for_pos_samp,
+                cost_sq_for_pos_samp_forward_transform,
                 x[params_anch:-params_buildup],
                 x[0:params_anch],
                 constant_spool_buildup_factor,
@@ -589,7 +606,7 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_origin, method, debug=False)
         # searcher.Reset(None, inv=False)
         searcher.Search(
             lambda x: float(costx(
-                cost_sq_for_pos_samp,
+                cost_sq_for_pos_samp_forward_transform,
                 x[params_anch:-params_buildup],
                 x[0:params_anch],
                 constant_spool_buildup_factor,
@@ -636,7 +653,7 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_origin, method, debug=False)
                 solver.SetGenerationMonitor(Monitor())
             solver.Solve(
                 lambda x: costx(
-                    cost_sq_for_pos_samp,
+                    cost_sq_for_pos_samp_forward_transform,
                     x[params_anch:-params_buildup],
                     x[0:params_anch],
                     constant_spool_buildup_factor,
@@ -674,7 +691,7 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_origin, method, debug=False)
             random_guess = np.array([ b[0] + (b[1] - b[0])*np.random.rand() for b in list(zip(lb, ub)) ])
             sol = scipy.optimize.minimize(
                 lambda x: costx(
-                    cost_sq_for_pos_samp,
+                    cost_sq_for_pos_samp_forward_transform,
                     x[params_anch:-params_buildup],
                     x[0:params_anch],
                     constant_spool_buildup_factor,
@@ -702,7 +719,7 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_origin, method, debug=False)
         print("You can not interrupt this solver without losing the solution.")
         best_x = scipy.optimize.minimize(
             lambda x: costx(
-                cost_sq_for_pos_samp,
+                cost_sq_for_pos_samp_forward_transform,
                 x[params_anch:-params_buildup],
                 x[0:params_anch],
                 constant_spool_buildup_factor,
@@ -905,7 +922,7 @@ if __name__ == "__main__":
             )
         else:
             pos = np.reshape([x for x in solution[params_anch:-params_buildup]], (u, 3))
-        return cost_sq_for_pos_samp(
+        return cost_sq_for_pos_samp_forward_transform(
             anch,
             pos,
             motor_pos_samp,
