@@ -1,5 +1,6 @@
-from simulation import *
+#!/usr/bin/python3
 
+from simulation import *
 
 class tester:
     "Hold some state that is common to several tests."

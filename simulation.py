@@ -11,6 +11,18 @@ import sys
 import signal
 import time
 
+# Config values should be based on HP4 defaults
+
+spool_buildup_factor_first_guess = 0.038  # Qualified first guess for 1.1 mm line
+spool_r_in_origin_first_guess = [75.0, 75.0, 75.0, 75.0]
+spool_gear_teeth = 255
+motor_gear_teeth = 20
+mechanical_advantage = np.array([2.0, 2.0, 2.0, 4.0])
+lines_per_spool = np.array([1.0, 1.0, 1.0, 1.0])
+
+
+
+
 class GracefulKiller:
   kill_now = False
   def __init__(self):
@@ -174,29 +186,29 @@ def samples_relative_to_origin_no_fuzz(anchors, pos):
 def motor_pos_samples_with_spool_buildup_compensation(
     anchors,
     pos,
-    spool_buildup_factor=0.038,  # Qualified first guess for 1.1 mm line
-    spool_r_in_origin=np.array([75.0, 75.0, 75.0, 75.0]),
-    spool_to_motor_gearing_factor=12.75,
-    mech_adv=np.array([2.0, 2.0, 2.0, 4.0]),
-    number_of_lines_per_spool=np.array([1.0, 1.0, 1.0, 1.0]),
+    spool_buildup_factor = spool_buildup_factor_first_guess,
+    spool_r_in_origin = np.array(spool_r_in_origin_first_guess),
+    spool_to_motor_gearing_factor = spool_gear_teeth/motor_gear_teeth,
+    mech_adv_ = mechanical_advantage,
+    lines_per_spool_ = lines_per_spool,
 ):
     """What motor positions (in degrees) motors would be at
     """
 
     # Assure np.array type
     spool_r_in_origin = np.array(spool_r_in_origin)
-    mech_adv = np.array(mech_adv)
-    number_of_lines_per_spool = np.array(number_of_lines_per_spool)
+    mech_adv_ = np.array(mech_adv_)
+    lines_per_spool_ = np.array(lines_per_spool_)
 
     spool_r_in_origin_sq = spool_r_in_origin * spool_r_in_origin
 
     # Buildup per line times lines. Minus sign because more line in air means less line on spool
-    k2 = -1.0 * mech_adv * number_of_lines_per_spool * spool_buildup_factor
+    k2 = -1.0 * mech_adv_ * lines_per_spool_ * spool_buildup_factor
 
     # we now want to use degrees instead of steps as unit of rotation
     # so setting 360 where steps per motor rotation is in firmware buildup compensation algorithms
     degrees_per_unit_times_r = (
-        spool_to_motor_gearing_factor * mech_adv * 360.0
+        spool_to_motor_gearing_factor * mech_adv_ * 360.0
     ) / (2.0 * np.pi)
     k0 = 2.0 * degrees_per_unit_times_r / k2
 
@@ -213,19 +225,19 @@ def motor_pos_samples_with_spool_buildup_compensation(
 
 def motor_pos_samples_to_line_length_with_buildup_compensation(
     motor_samps,
-    spool_buildup_factor=0.038,  # Qualified first guess for 1.1 mm line
-    spool_r=np.array([75.0, 75.0, 75.0, 75.0]),
-    spool_to_motor_gearing_factor=12.75,
-    mech_adv=np.array([2.0, 2.0, 2.0, 4.0]),
-    number_of_lines_per_spool=np.array([1.0, 1.0, 1.0, 1.0]),  # HP4 default
+    spool_buildup_factor = spool_buildup_factor_first_guess,
+    spool_r = spool_r_in_origin_first_guess,
+    spool_to_motor_gearing_factor = spool_gear_teeth/motor_gear_teeth,
+    mech_adv_ = mechanical_advantage,
+    lines_per_spool_ = lines_per_spool,
 ):
     # Buildup per line times lines. Minus sign because more line in air means less line on spool
-    c1 = -mech_adv * number_of_lines_per_spool * spool_buildup_factor
+    c1 = -mech_adv_ * lines_per_spool_ * spool_buildup_factor
 
     # we now want to use degrees instead of steps as unit of rotation
     # so setting 360 where steps per motor rotation is in firmware buildup compensation algorithms
     degrees_per_unit_times_r = (
-        spool_to_motor_gearing_factor * mech_adv * 360.0
+        spool_to_motor_gearing_factor * mech_adv_ * 360.0
     ) / (2.0 * np.pi)
     k0 = 2.0 * degrees_per_unit_times_r / c1
 
