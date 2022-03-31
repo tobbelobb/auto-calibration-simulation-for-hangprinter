@@ -2,7 +2,6 @@
 
 """Simulation of Hangprinter auto-calibration
 """
-from __future__ import division  # Always want 3/2 = 1.5
 import numpy as np
 import scipy.optimize
 import argparse
@@ -20,15 +19,6 @@ class GracefulKiller:
 
   def exit_gracefully(self,signum, frame):
     self.kill_now = True
-
-import decimal
-decimal.getcontext().prec = 25
-# If you fear that truncation errors dominate the cost
-# function computation, uncomment Dec = decimal.Decimal
-# and comment out Dec = float
-#Dec = decimal.Decimal
-Dec = float
-
 
 # Axes indexing
 A = 0
@@ -184,11 +174,11 @@ def samples_relative_to_origin_no_fuzz(anchors, pos):
 def motor_pos_samples_with_spool_buildup_compensation(
     anchors,
     pos,
-    spool_buildup_factor=Dec(0.038),  # Qualified first guess for 1.1 mm line
-    spool_r_in_origin=np.array([Dec(75.0), Dec(75.0), Dec(75.0), Dec(75.0)]),
-    spool_to_motor_gearing_factor=Dec(12.75),
-    mech_adv=np.array([Dec(2.0), Dec(2.0), Dec(2.0), Dec(4.0)]),
-    number_of_lines_per_spool=np.array([Dec(1.0), Dec(1.0), Dec(1.0), Dec(1.0)]),
+    spool_buildup_factor=0.038,  # Qualified first guess for 1.1 mm line
+    spool_r_in_origin=np.array([75.0, 75.0, 75.0, 75.0]),
+    spool_to_motor_gearing_factor=12.75,
+    mech_adv=np.array([2.0, 2.0, 2.0, 4.0]),
+    number_of_lines_per_spool=np.array([1.0, 1.0, 1.0, 1.0]),
 ):
     """What motor positions (in degrees) motors would be at
     """
@@ -201,14 +191,14 @@ def motor_pos_samples_with_spool_buildup_compensation(
     spool_r_in_origin_sq = spool_r_in_origin * spool_r_in_origin
 
     # Buildup per line times lines. Minus sign because more line in air means less line on spool
-    k2 = -Dec(1.0) * mech_adv * number_of_lines_per_spool * spool_buildup_factor
+    k2 = -1.0 * mech_adv * number_of_lines_per_spool * spool_buildup_factor
 
     # we now want to use degrees instead of steps as unit of rotation
     # so setting 360 where steps per motor rotation is in firmware buildup compensation algorithms
     degrees_per_unit_times_r = (
-        spool_to_motor_gearing_factor * mech_adv * Dec(360.0)
-    ) / (Dec(2.0) * Dec(np.pi))
-    k0 = Dec(2.0) * degrees_per_unit_times_r / k2
+        spool_to_motor_gearing_factor * mech_adv * 360.0
+    ) / (2.0 * np.pi)
+    k0 = 2.0 * degrees_per_unit_times_r / k2
 
     line_lengths_origin = np.linalg.norm(anchors, 2, 1)
 
@@ -223,11 +213,11 @@ def motor_pos_samples_with_spool_buildup_compensation(
 
 def motor_pos_samples_to_line_length_with_buildup_compensation(
     motor_samps,
-    spool_buildup_factor=Dec(0.038),  # Qualified first guess for 1.1 mm line
-    spool_r=np.array([Dec(75.0), Dec(75.0), Dec(75.0), Dec(75.0)]),
-    spool_to_motor_gearing_factor=Dec(12.75),
-    mech_adv=np.array([Dec(2.0), Dec(2.0), Dec(2.0), Dec(4.0)]),
-    number_of_lines_per_spool=np.array([Dec(1.0), Dec(1.0), Dec(1.0), Dec(1.0)]),  # HP4 default
+    spool_buildup_factor=0.038,  # Qualified first guess for 1.1 mm line
+    spool_r=np.array([75.0, 75.0, 75.0, 75.0]),
+    spool_to_motor_gearing_factor=12.75,
+    mech_adv=np.array([2.0, 2.0, 2.0, 4.0]),
+    number_of_lines_per_spool=np.array([1.0, 1.0, 1.0, 1.0]),  # HP4 default
 ):
     # Buildup per line times lines. Minus sign because more line in air means less line on spool
     c1 = -mech_adv * number_of_lines_per_spool * spool_buildup_factor
@@ -235,11 +225,11 @@ def motor_pos_samples_to_line_length_with_buildup_compensation(
     # we now want to use degrees instead of steps as unit of rotation
     # so setting 360 where steps per motor rotation is in firmware buildup compensation algorithms
     degrees_per_unit_times_r = (
-        spool_to_motor_gearing_factor * mech_adv * Dec(360.0)
-    ) / (Dec(2.0) * Dec(np.pi))
-    k0 = Dec(2.0) * degrees_per_unit_times_r / c1
+        spool_to_motor_gearing_factor * mech_adv * 360.0
+    ) / (2.0 * np.pi)
+    k0 = 2.0 * degrees_per_unit_times_r / c1
 
-    return (((motor_samps / k0) + spool_r) ** Dec(2.0) - spool_r * spool_r) / c1
+    return (((motor_samps / k0) + spool_r) ** 2.0 - spool_r * spool_r) / c1
 
 
 def cost(anchors, pos, samp):
@@ -311,10 +301,10 @@ def cost_sq_for_pos_samp(
 def anchorsvec2matrix(anchorsvec):
     """ Create a 4x3 anchors matrix from anchors vector.
     """
-    anchors = np.array([[Dec(anchorsvec[0]), Dec(anchorsvec[1]), Dec(anchorsvec[2])],
-                        [Dec(anchorsvec[3]), Dec(anchorsvec[4]), Dec(anchorsvec[5])],
-                        [Dec(anchorsvec[6]), Dec(anchorsvec[7]), Dec(anchorsvec[8])],
-                        [Dec(anchorsvec[9]), Dec(anchorsvec[10]), Dec(anchorsvec[11])],
+    anchors = np.array([[anchorsvec[0], anchorsvec[1], anchorsvec[2]],
+                        [anchorsvec[3], anchorsvec[4], anchorsvec[5]],
+                        [anchorsvec[6], anchorsvec[7], anchorsvec[8]],
+                        [anchorsvec[9], anchorsvec[10], anchorsvec[11]],
                         ])
 
     return anchors
@@ -384,14 +374,10 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
                x1   y1   z1   x2   y2   z2   ...  xu   yu   zu
         """
 
-        if(len(posvec) > 0 and not type(posvec[0]) == decimal.Decimal):
-            posvec = np.array([Dec(pos) for pos in posvec])
-        if(not type(anchvec[0]) == decimal.Decimal):
-            anchvec = np.array([Dec(anch) for anch in anchvec])
-        if(not type(spool_buildup_factor) == decimal.Decimal):
-            spool_buildup_factor = Dec(spool_buildup_factor)
-        if(not type(spool_r[0]) == decimal.Decimal):
-            spool_r = np.array([Dec(r) for r in spool_r])
+        if(len(posvec) > 0):
+            posvec = np.array([pos for pos in posvec])
+        anchvec = np.array([anch for anch in anchvec])
+        spool_r = np.array([r for r in spool_r])
 
         anchors = anchorsvec2matrix(anchvec)
         # Adds in known positions back in before calculating the cost
@@ -909,8 +895,8 @@ if __name__ == "__main__":
     u = np.shape(motor_pos_samp)[0]
     ux = np.shape(xyz_of_samp)[0]
 
-    motor_pos_samp = np.array([Dec(r) for r in motor_pos_samp.reshape(u*4)]).reshape((u, 4))
-    xyz_of_samp = np.array([Dec(r) for r in xyz_of_samp.reshape(ux*3)]).reshape((ux, 3))
+    motor_pos_samp = np.array([r for r in motor_pos_samp.reshape(u*4)]).reshape((u, 4))
+    xyz_of_samp = np.array([r for r in xyz_of_samp.reshape(ux*3)]).reshape((ux, 3))
 
 
     if ux > u:
@@ -922,7 +908,7 @@ if __name__ == "__main__":
         anch = np.zeros((4, 3))
         anch = anchorsvec2matrix(solution[0:params_anch])
         spool_buildup_factor = constant_spool_buildup_factor #Dec(solution[-params_buildup])
-        spool_r = np.array([Dec(x) for x in solution[-params_buildup :]])
+        spool_r = np.array([x for x in solution[-params_buildup :]])
         pos = np.zeros((u, 3))
         if np.size(xyz_of_samp) != 0:
             pos = np.vstack(
@@ -934,7 +920,7 @@ if __name__ == "__main__":
                 )
             )
         else:
-            pos = np.reshape([Dec(x) for x in solution[params_anch:-params_buildup]], (u, 3))
+            pos = np.reshape([x for x in solution[params_anch:-params_buildup]], (u, 3))
         return float(cost_sq_for_pos_samp(
             anch,
             pos,
