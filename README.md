@@ -1,6 +1,6 @@
 # This Branch Is Part Of HP4 Development. To Be Used Together With RepRapFirmware.
 
-HP4 Prototype/RepRapFirmware uses `M569.3` and `M569.4` to collect auto calibration data in the form of motor/encoder positions in degrees. HP3 worked differently. This branch of this repo auto calibrates based on encoder position data. That is why this branch of this repo only works with HP4, and not HP3.
+HP4 RepRapFirmware v3.4 and onwards uses `M569.3` and `M569.4` to collect auto calibration data in the form of motor/encoder positions in degrees. HP3 worked differently. This branch of this repo auto calibrates based on encoder position data. That is why this branch of this repo only works with HP4, and not HP3.
 
 # Auto Calibration Simulation for Hangprinter v4
 
@@ -8,7 +8,7 @@ Hangprinter is a parallel line driven RepRap 3D Printer.
 It's repo is [here](https://gitlab.com/tobben/hangprinter).
 
 The Hangprinter Project has a goal of auto-calibration.
-That requires locating anchor points by sampling relative line lengths with tight lines at unknown positions.
+That requires locating anchor points by sampling relative line lengths with straight lines at unknown positions.
 This code tries to optimize the anchor positions to fit the samples of relative line lengths.
 
 Note that this code assumes that the B-anchor has a positive x-coordinate.
@@ -30,16 +30,16 @@ sudo pip install mystic
 
 Once dependencies and data are in place, take the time to do
 ```bash
-python ./simulation.py --help
+./simulation.py --help
 ```
 
 The default optimization runs with
 ```bash
-python ./simulation.py
+./simulation.py
 ```
 
-Its output is quite noisy.
-If it works (should finish in a few seconds/minutes), then the bottom part of your output looks similar to
+If it works it should finish in a few seconds or minutes.
+The output should look similar to
 ```
 SLSQP
 Hit Ctrl+C and wait a bit to stop solver and get current best solution.
@@ -52,7 +52,8 @@ M669 A15.81:-1591.97:-125.62 B1294.58:1231.78:-169.71 C-1397.45:727.84:-147.24 D
 M666 Q0.050000 R75.849:75.831:75.428:75.142
 
 ```
-Note that these values are only test data and does not correspond to your Hangprinter setup (yet).
+Note that these values are calculated from test data.
+They don't correspond to your Hangprinter setup (yet).
 
 ## How to Collect Data Points?
 
@@ -69,7 +70,7 @@ This guides the `simulation.py` script when searching for better calibration val
 
 ### What if I can't run hp-mark?
 
-Then `simulation.py` can still be used without xyz-position data, but it's harder to do.
+Then `simulation.py` can still be used without xyz-position data, but it's more involved.
 
 Data collection depends on motor encoders (ODrives).
 As of July 28, 2021, this is the procedure:
@@ -106,11 +107,14 @@ or you can edit the `line_lengths_origin` values in the source file directly.
 
 
 ## How to Insert Data Points In The Source File Directly?
-Open `simulation.py` and modify the main function, near the bottom of the file.
+Open `simulation.py` and modify the main function, near the top of the file.
 Replace `??` with data points collected with your Hangprinter.
 ```python
 ...
 # Replace this with your collected data
+
+line_lengths_origin = np.array([??, ??, ??, ??])
+
 motor_pos_samp = np.array(
     [
         [??, ??, ??, ??],
@@ -121,7 +125,6 @@ xyz_of_samp = np.array(
         [??, ??, ??],
         [??, ??, ??]
     ])
-line_lengths_origin = np.array([??, ??, ??, ??])
 ...
 ```
 
@@ -187,5 +190,5 @@ sudo python setup.py install
 
 For more on usage, try
 ```bash
-python ./simulation.py --help
+./simulation.py --help
 ```

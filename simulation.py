@@ -13,14 +13,54 @@ import time
 
 # Config values should be based on HP4 defaults
 
-spool_buildup_factor_first_guess = 0.038  # Qualified first guess for 1.1 mm line
+constant_spool_buildup_factor = 0.05 # Qualified first guess for 1.1 mm line
 spool_r_in_origin_first_guess = [75.0, 75.0, 75.0, 75.0]
 spool_gear_teeth = 255
 motor_gear_teeth = 20
 mechanical_advantage = np.array([2.0, 2.0, 2.0, 4.0])
 lines_per_spool = np.array([1.0, 1.0, 1.0, 1.0])
 
+line_lengths_origin = np.array([1597, 1795, 1582.5, 2355])
 
+xyz_of_samp = np.array(
+            [
+              [0,0,0],
+              # Using bed probe for Z-measurements
+              [198.64, -198.88, 0],
+              [-199.06, -199.93, -0.579], #0],
+              [-199.85, 200.87, -0.521], #0],
+              [200.67, 200.46, -0.294], #0],
+            ])
+
+motor_pos_samp = np.array(
+            [
+               [0,0,0,0],
+               [-3602.33, 298.79, 5238.63, 576.91,  ],
+               [-3524.99, 5434.89, -1170.04, 734.34,  ],
+               [4091.48, 554.49, -5127.85, 731.61,  ],
+               [4030.31, -5413.11, 2056.51, 573.32,  ],
+               [2169.85, 2176.20, 2286.17, -19236.88,  ],
+               [2678.39, 6333.78, -2229.26, -18149.32,  ],
+               [8050.31, 3287.79, -4644.66, -17241.76,  ],
+               [7807.11, -4014.60, 3629.79, -18006.33,  ],
+               [8050.47, -5316.00, 5367.43, -17543.66,  ],
+               [-1123.25, 2413.00, 7189.07, -18498.38,  ],
+               [-1377.10, 4754.60, 4130.07, -18811.40,  ],
+               [6793.76, 6516.43, 6978.43, -38306.95,  ],
+               [6993.55, 8981.18, 4328.00, -37597.85,  ],
+               [8431.25, 6675.74, 4911.03, -37958.17,  ],
+               [10050.68, 5693.20, 4288.40, -37539.39,  ],
+               [10050.68, 3215.88, 7138.63, -37678.89,  ],
+               [10188.45, 2064.54, 8630.30, -37326.44,  ],
+               [6843.29, 7683.97, 5624.65, -38093.35,  ],
+               [10050.67, 5693.11, 4287.45, -37539.31,  ],
+               [6993.59, 4277.63, 9730.37, -37878.09,  ],
+               [10036.10, -10489.40, 2532.32, 2636.98,  ],
+               [-5074.01, 689.36, 7851.53, 1293.21,  ],
+               [2397.58, -335.64, 5499.65, -18922.93,  ],
+               [3723.43, 8847.10, 8508.66, -37724.91,  ],
+               [3778.36, 9895.85, 7309.68, -37514.10,  ],
+            ])
 
 
 class GracefulKiller:
@@ -44,9 +84,6 @@ params_anch = 12
 params_buildup = 4  # four spool radii, one spool buildup factor
 A_bx = 3
 A_cx = 6
-
-constant_spool_buildup_factor = 0 # Don't edit this. Set this value further down in the script
-line_lengths_origin = np.array([0, 0, 0, 0]) # Don't edit this. Set this value further down in the script
 
 def symmetric_anchors(l, az=-120.0, bz=-120.0, cz=-120.0):
     anchors = np.array(np.zeros((4, 3)))
@@ -186,7 +223,7 @@ def samples_relative_to_origin_no_fuzz(anchors, pos):
 def motor_pos_samples_with_spool_buildup_compensation(
     anchors,
     pos,
-    spool_buildup_factor = spool_buildup_factor_first_guess,
+    spool_buildup_factor = constant_spool_buildup_factor,
     spool_r_in_origin = np.array(spool_r_in_origin_first_guess),
     spool_to_motor_gearing_factor = spool_gear_teeth/motor_gear_teeth,
     mech_adv_ = mechanical_advantage,
@@ -212,8 +249,6 @@ def motor_pos_samples_with_spool_buildup_compensation(
     ) / (2.0 * np.pi)
     k0 = 2.0 * degrees_per_unit_times_r / k2
 
-    line_lengths_origin = np.linalg.norm(anchors, 2, 1)
-
     relative_line_lengths = samples_relative_to_origin_no_fuzz(anchors, pos)
     motor_positions = k0 * (
         np.sqrt(spool_r_in_origin_sq + relative_line_lengths * k2)
@@ -225,7 +260,7 @@ def motor_pos_samples_with_spool_buildup_compensation(
 
 def motor_pos_samples_to_line_length_with_buildup_compensation(
     motor_samps,
-    spool_buildup_factor = spool_buildup_factor_first_guess,
+    spool_buildup_factor = constant_spool_buildup_factor,
     spool_r = spool_r_in_origin_first_guess,
     spool_to_motor_gearing_factor = spool_gear_teeth/motor_gear_teeth,
     mech_adv_ = mechanical_advantage,
@@ -354,7 +389,7 @@ def pre_list(l, num):
     )
 
 
-def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
+def solve(motor_pos_samp, xyz_of_samp, method):
     """Find reasonable positions and anchors given a set of samples.
     """
 
@@ -450,16 +485,6 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
          spool_r_in_origin_first_guess[2] + 5.0,
          spool_r_in_origin_first_guess[3] + 5.0]
     )
-
-    # It would work to just swap the signs of bx and cx after the optimization
-    # But there are fewer assumptions involved in setting correct bounds from the start instead
-    if cx_is_positive:
-        tmp = lb[A_bx]
-        lb[A_bx] = lb[A_cx]
-        lb[A_cx] = tmp
-        tmp = ub[A_bx]
-        ub[A_bx] = ub[A_cx]
-        ub[A_cx] = tmp
 
     pos_est = np.zeros((u - ux, 3))  # The positions we need to estimate
     anchors_est = np.array(
@@ -749,12 +774,6 @@ if __name__ == "__main__":
         "-d", "--debug", help="Print debug information", action="store_true"
     )
     parser.add_argument(
-        "-c",
-        "--cx_is_positive",
-        help="Use this flag if your C anchor should have a positive X-coordinate",
-        action="store_true",
-    )
-    parser.add_argument(
         "-m",
         "--method",
         help="Available methods are SLSQP (0), PowellDirectionalSolver (1), L-BFGS-B (2), differentialEvolutionSolver (3), BuckShot (4), and all (5). Try 0 first, then 1, and so on.",
@@ -820,82 +839,36 @@ if __name__ == "__main__":
         ]
     )
 
-    # a = np.zeros((2,3))
-    xyz_of_samp = args["xyz_of_samp"]
-    if np.size(xyz_of_samp) != 0:
-        if np.size(xyz_of_samp) % 3 != 0:
+    # Possibly overwrite hard-coded data with command line-provided data
+    xyz_of_samp_ = args["xyz_of_samp"]
+    if np.size(xyz_of_samp_) != 0:
+        if np.size(xyz_of_samp_) % 3 != 0:
             print(
                 "Error: You specified %d numbers after your -x/--xyz_of_samp option, which is not a multiple of 3 numbers."
             )
             sys.exit(1)
-        xyz_of_samp = xyz_of_samp.reshape((int(np.size(xyz_of_samp) / 3), 3))
-    else:
-        xyz_of_samp = np.array(
-            [
-              [0,0,0],
-              # Using bed probe for Z-measurements
-              [198.64, -198.88, 0],
-              [-199.06, -199.93, -0.579], #0],
-              [-199.85, 200.87, -0.521], #0],
-              [200.67, 200.46, -0.294], #0],
-            ])
+        xyz_of_samp = xyz_of_samp_.reshape((int(np.size(xyz_of_samp_) / 3), 3))
 
-    motor_pos_samp = args["sample_data"]
-    if np.size(motor_pos_samp) != 0:
-        if np.size(motor_pos_samp) % 4 != 0:
+    motor_pos_samp_ = args["sample_data"]
+    if np.size(motor_pos_samp_) != 0:
+        if np.size(motor_pos_samp_) % 4 != 0:
             print("Please specify motor positions (angles) of sampling points.")
             print(
-                "You specified %d numbers after your -s/--sample_data option, which is not a multiple of 4 number of numbers." % (np.size(motor_pos_samp))
+                "You specified %d numbers after your -s/--sample_data option, which is not a multiple of 4 number of numbers." % (np.size(motor_pos_samp_))
             )
             sys.exit(1)
-        motor_pos_samp = motor_pos_samp.reshape(
-            (int(np.size(motor_pos_samp) / 4), 4)
+        motor_pos_samp = motor_pos_samp_.reshape(
+            (int(np.size(motor_pos_samp_) / 4), 4)
         )
-    else:
-        # You might want to manually replace this with your collected data
-        motor_pos_samp = np.array(
-            [
-               [0,0,0,0],
-               [-3602.33, 298.79, 5238.63, 576.91,  ],
-               [-3524.99, 5434.89, -1170.04, 734.34,  ],
-               [4091.48, 554.49, -5127.85, 731.61,  ],
-               [4030.31, -5413.11, 2056.51, 573.32,  ],
-               [2169.85, 2176.20, 2286.17, -19236.88,  ],
-               [2678.39, 6333.78, -2229.26, -18149.32,  ],
-               [8050.31, 3287.79, -4644.66, -17241.76,  ],
-               [7807.11, -4014.60, 3629.79, -18006.33,  ],
-               [8050.47, -5316.00, 5367.43, -17543.66,  ],
-               [-1123.25, 2413.00, 7189.07, -18498.38,  ],
-               [-1377.10, 4754.60, 4130.07, -18811.40,  ],
-               [6793.76, 6516.43, 6978.43, -38306.95,  ],
-               [6993.55, 8981.18, 4328.00, -37597.85,  ],
-               [8431.25, 6675.74, 4911.03, -37958.17,  ],
-               [10050.68, 5693.20, 4288.40, -37539.39,  ],
-               [10050.68, 3215.88, 7138.63, -37678.89,  ],
-               [10188.45, 2064.54, 8630.30, -37326.44,  ],
-               [6843.29, 7683.97, 5624.65, -38093.35,  ],
-               [10050.67, 5693.11, 4287.45, -37539.31,  ],
-               [6993.59, 4277.63, 9730.37, -37878.09,  ],
-               [10036.10, -10489.40, 2532.32, 2636.98,  ],
-               [-5074.01, 689.36, 7851.53, 1293.21,  ],
-               [2397.58, -335.64, 5499.65, -18922.93,  ],
-               [3723.43, 8847.10, 8508.66, -37724.91,  ],
-               [3778.36, 9895.85, 7309.68, -37514.10,  ],
-            ])
-
-
-    line_lengths_origin = args["line_lengths"]
-    if np.size(line_lengths_origin) != 0:
-        if np.size(line_lengths_origin) != 4:
+    line_lengths_origin_ = args["line_lengths"]
+    if np.size(line_lengths_origin_) != 0:
+        if np.size(line_lengths_origin_) != 4:
             print("Please specify four measured line lengths.")
             print(
-                "You specified %d numbers after your -l/--line_lengths_origin option." % (np.size(line_lengths_origin))
+                "You specified %d numbers after your -l/--line_lengths_origin option." % (np.size(line_lengths_origin_))
             )
             sys.exit(1)
-    else:
-        line_lengths_origin = np.array([1597, 1795, 1582.5, 2355])
-
-    constant_spool_buildup_factor = 0.05
+        line_lengths_origin = line_lengths_origin_
 
     u = np.shape(motor_pos_samp)[0]
     ux = np.shape(xyz_of_samp)[0]
@@ -912,7 +885,7 @@ if __name__ == "__main__":
     def computeCost(solution):
         anch = np.zeros((4, 3))
         anch = anchorsvec2matrix(solution[0:params_anch])
-        spool_buildup_factor = constant_spool_buildup_factor #Dec(solution[-params_buildup])
+        spool_buildup_factor = constant_spool_buildup_factor
         spool_r = np.array([x for x in solution[-params_buildup :]])
         pos = np.zeros((u, 3))
         if np.size(xyz_of_samp) != 0:
@@ -977,7 +950,7 @@ if __name__ == "__main__":
                 candidate(
                     cand_name,
                     solve(
-                        motor_pos_samp, xyz_of_samp, cand_name, args["cx_is_positive"]
+                        motor_pos_samp, xyz_of_samp, cand_name
                         ),
                     )
                 for cand_name in [
@@ -997,8 +970,7 @@ if __name__ == "__main__":
             solve(
                 motor_pos_samp,
                 xyz_of_samp,
-                args["method"],
-                args["cx_is_positive"],
+                args["method"]
             ),
         )
 
