@@ -364,19 +364,6 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
     ux = np.shape(xyz_of_samp)[0]
     number_of_params_pos = 3 * (u - ux)
 
-    overall_scaler = 1.0
-    anch_scale = 1.0
-    pos_scale  = 1.0
-    sbf_scale  = 1.0000
-    sr_scale   = 1.00
-
-    def scale_back_solution(sol):
-        sol[0:params_anch] *= float(anch_scale)
-        sol[params_anch:-params_buildup] *= float(pos_scale)
-        #sol[-params_buildup] *= float(sbf_scale)
-        sol[-params_buildup :] *= float(sr_scale)
-        return sol
-
     def costx(_cost, posvec, anchvec, spool_buildup_factor, spool_r, u):
         """Identical to cost, except the shape of inputs and capture of samp, xyz_of_samp, ux, and u
 
@@ -395,16 +382,16 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
         # Adds in known positions back in before calculating the cost
         pos = np.zeros((u, 3))
         if np.size(xyz_of_samp) != 0:
-            pos[0:ux] = xyz_of_samp / pos_scale
+            pos[0:ux] = xyz_of_samp
         if u > ux:
             pos[ux:] = np.reshape(posvec, (u - ux, 3))
 
         return _cost(
-            anchors * anch_scale,
-            pos * pos_scale,
+            anchors,
+            pos,
             motor_pos_samp[:u],
-            spool_buildup_factor * sbf_scale,
-            spool_r * sr_scale,
+            spool_buildup_factor,
+            spool_r,
         )
 
     l_long = 4000.0
@@ -423,39 +410,45 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
     # Define bounds
     lb = np.array(
       [
-          -l_long / float(anch_scale),  # A_ax > x
-          -l_long / float(anch_scale),  # A_ay > x
-          -1300.0 / float(anch_scale),  # A_az > x
-              0.0 / float(anch_scale),  # A_bx > x
-              0.0 / float(anch_scale),  # A_by > x
-          -1300.0 / float(anch_scale),  # A_bz > x
-          -l_long / float(anch_scale),  # A_cx > x
-              0.0 / float(anch_scale),  # A_cy > x
-          -1300.0 / float(anch_scale),  # A_cz > x
-           -500.0 / float(anch_scale),  # A_dx > x
-           -500.0 / float(anch_scale),  # A_dy > x
-           1000.0 / float(anch_scale),  # A_dz > x
+          -l_long,  # A_ax > x
+          -l_long,  # A_ay > x
+          -1300.0,  # A_az > x
+              0.0,  # A_bx > x
+              0.0,  # A_by > x
+          -1300.0,  # A_bz > x
+          -l_long,  # A_cx > x
+              0.0,  # A_cy > x
+          -1300.0,  # A_cz > x
+           -500.0,  # A_dx > x
+           -500.0,  # A_dy > x
+           1000.0,  # A_dz > x
       ]
-      + [-l_short / float(pos_scale), -l_short / float(pos_scale), data_z_min / float(pos_scale)] * (u - ux)
-      + [74.0 / float(sr_scale), 74.0 / float(sr_scale), 74.0 / float(sr_scale), 74.0 / float(sr_scale)]
+      + [-l_short, -l_short, data_z_min] * (u - ux)
+      + [spool_r_in_origin_first_guess[0] - 1.0,
+         spool_r_in_origin_first_guess[1] - 1.0,
+         spool_r_in_origin_first_guess[2] - 1.0,
+         spool_r_in_origin_first_guess[3] - 1.0]
     )
     ub = np.array(
       [
-          l_long / float(anch_scale),  # A_ax < x
-             0.0 / float(anch_scale),  # A_ay < x
-           200.0 / float(anch_scale),  # A_az < x
-          l_long / float(anch_scale),  # A_bx < x
-          l_long / float(anch_scale),  # A_by < x
-           200.0 / float(anch_scale),  # A_bz < x
-             0.0 / float(anch_scale),  # A_cx < x
-          l_long / float(anch_scale),  # A_cy < x
-           200.0 / float(anch_scale),  # A_cz < x
-           500.0 / float(anch_scale),  # A_dx < x
-           500.0 / float(anch_scale),  # A_dy < x
-          l_long / float(anch_scale),  # A_dz < x
+          l_long,  # A_ax < x
+             0.0,  # A_ay < x
+           200.0,  # A_az < x
+          l_long,  # A_bx < x
+          l_long,  # A_by < x
+           200.0,  # A_bz < x
+             0.0,  # A_cx < x
+          l_long,  # A_cy < x
+           200.0,  # A_cz < x
+           500.0,  # A_dx < x
+           500.0,  # A_dy < x
+          l_long,  # A_dz < x
       ]
-      + [l_short / float(pos_scale), l_short / float(pos_scale), 2.0 * l_short / float(pos_scale)] * (u - ux)
-      + [80.0 / float(sr_scale), 80.0 / float(sr_scale), 80.0 / float(sr_scale), 80.0 / float(sr_scale)]
+      + [l_short, l_short, 2.0 * l_short] * (u - ux)
+      + [spool_r_in_origin_first_guess[0] + 5.0,
+         spool_r_in_origin_first_guess[1] + 5.0,
+         spool_r_in_origin_first_guess[2] + 5.0,
+         spool_r_in_origin_first_guess[3] + 5.0]
     )
 
     # It would work to just swap the signs of bx and cx after the optimization
@@ -475,7 +468,7 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
     x_guess = (
             list(anchorsmatrix2vec(anchors_est))[0:params_anch]
         + list(posmatrix2vec(pos_est))
-        + [74.5 / float(sr_scale), 74.5 / float(sr_scale), 74.5 / float(sr_scale), 74.5 / float(sr_scale)]
+        + spool_r_in_origin_first_guess
     )
 
     disp = False
@@ -502,14 +495,14 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
         solver.SetGenerationMonitor(stepmon)
         solver.enable_signal_handler()  # Handle Ctrl+C gracefully. Be restartable
         solver.Solve(
-            lambda x: overall_scaler*float(costx(
+            lambda x: costx(
                 cost_sq_for_pos_samp,
                 x[params_anch:-params_buildup],
                 x[0:params_anch],
                 constant_spool_buildup_factor,
                 x[-params_buildup :],
                 u,
-            )),
+            ),
             termination=stop,
             strategy=Best1Bin,
         )
@@ -522,7 +515,7 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
         best_x = solver.Solution()
         if(not type(best_x[0]) == float):
             best_x = np.array([float(pos) for pos in best_x])
-        return scale_back_solution(best_x)
+        return best_x
 
     elif method == "BuckShot":
         print("You can not interrupt this solver without losing the solution.")
@@ -585,7 +578,7 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
         best_x = np.array(min(searcher.Minima(), key=searcher.Minima().get))
         if(not type(best_x[0]) == float):
             best_x = np.array([float(pos) for pos in best_x])
-        return scale_back_solution(best_x)
+        return best_x
 
     elif method == "PowellDirectionalSolver":
         from mystic.solvers import PowellDirectionalSolver
@@ -614,14 +607,14 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
             if not disp:
                 solver.SetGenerationMonitor(Monitor())
             solver.Solve(
-                lambda x: overall_scaler*float(costx(
+                lambda x: costx(
                     cost_sq_for_pos_samp,
                     x[params_anch:-params_buildup],
                     x[0:params_anch],
                     constant_spool_buildup_factor,
                     x[-params_buildup :],
                     u,
-                ))
+                )
             )
             if solver.bestEnergy < best_cost:
                 if disp:
@@ -636,7 +629,7 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
 
         if(not type(best_x[0]) == float):
             best_x = np.array([float(pos) for pos in best_x])
-        return scale_back_solution(best_x)
+        return best_x
 
     elif method == "SLSQP":
         # Create a random guess
@@ -651,14 +644,14 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
                 break
             random_guess = np.array([ b[0] + (b[1] - b[0])*np.random.rand() for b in list(zip(lb, ub)) ])
             sol = scipy.optimize.minimize(
-                lambda x: overall_scaler*float(costx(
+                lambda x: costx(
                     cost_sq_for_pos_samp,
                     x[params_anch:-params_buildup],
                     x[0:params_anch],
                     constant_spool_buildup_factor,
                     x[-params_buildup :],
                     u,
-                )),
+                ),
                 random_guess,
                 method="SLSQP",
                 bounds=list(zip(lb, ub)),
@@ -673,19 +666,19 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
 
         if(not type(best_x[0]) == float):
             best_x = np.array([float(pos) for pos in best_x])
-        return scale_back_solution(np.array(best_x))
+        return np.array(best_x)
 
     elif method == "L-BFGS-B":
         print("You can not interrupt this solver without losing the solution.")
         best_x = scipy.optimize.minimize(
-            lambda x: overall_scaler*float(costx(
+            lambda x: costx(
                 cost_sq_for_pos_samp,
                 x[params_anch:-params_buildup],
                 x[0:params_anch],
                 constant_spool_buildup_factor,
                 x[-params_buildup :],
                 u,
-            )),
+            ),
             x_guess,
             method="L-BFGS-B",
             bounds=list(zip(lb, ub)),
@@ -693,7 +686,7 @@ def solve(motor_pos_samp, xyz_of_samp, method, cx_is_positive=False):
         ).x
         if(not type(best_x[0]) == float):
             best_x = np.array([float(pos) for pos in best_x])
-        return scale_back_solution(best_x)
+        return best_x
 
     else:
         print("Method %s is not supported!" % method)
