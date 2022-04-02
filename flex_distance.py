@@ -21,7 +21,7 @@ def flex_distance(abc_axis_max_force, anchors, pos, mechanical_advantage, spring
 
     # Scale the d-direction vectors by the target_force
     D_pre = -abc_axis_max_force * four_direction_vectors_for_each_position[:,:,3]
-    D_grav = np.c_[four_direction_vectors_for_each_position[:,:2,3]*D_mg[:,np.newaxis], np.zeros((np.size(D_mg,0)))]
+    D_grav = -np.c_[four_direction_vectors_for_each_position[:,:2,3]*D_mg[:,np.newaxis], np.zeros((np.size(D_mg,0)))]
 
     # Find the ABC forces needed to cancel out target_force in D-direction
     ABC_forces_pre = np.ones(pos_w_origin.shape)
