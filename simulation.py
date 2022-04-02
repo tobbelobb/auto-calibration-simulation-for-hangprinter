@@ -13,6 +13,7 @@ import signal
 import time
 
 from hangprinter_forward_transform import forward_transform
+from flex_distance import flex_distance
 
 # Config values should be based on HP4 defaults
 
@@ -23,46 +24,69 @@ motor_gear_teeth = 20
 mechanical_advantage = np.array([2.0, 2.0, 2.0, 4.0])
 lines_per_spool = np.array([1.0, 1.0, 1.0, 1.0])
 
+abc_axis_max_force = 10
+springKPerUnitLength = 20000.0
+mover_weight = 1.0
+
+l_long = 14000.0 # The longest distance from the origin that we should consider for anchor positions
+l_short = 3000.0 # The longest distance from the origin that we should consider for data point collection
+data_z_min = -100.0 # The lowest z-coordinate the algorithm should care about guessing
 line_lengths_origin = np.array([1597, 1795, 1582.5, 2355])
 
 xyz_of_samp = np.array(
             [
-              [0,0,0],
-              # Using bed probe for Z-measurements
-              [198.64, -198.88, 0],
-              [-199.06, -199.93, -0.579], #0],
-              [-199.85, 200.87, -0.521], #0],
-              [200.67, 200.46, -0.294], #0],
+              [-204.986, 481.404, 61.3799],
+              [286.227, 478.716, 63.8561],
+              [120.141, -71.862, 587.729],
+              [-217.577, 293.977, 626.494],
+              [-479.619, 188.839, 756.471],
+              [233.685, 351.62, 469.438],
+              [67.3321, 325.857, 239.275],
+              [-198.748, 63.0038, 1.22]
+
+              ## Using bed probe for Z-measurements
+              #[198.64, -198.88, 0],
+              #[-199.06, -199.93, -0.579], #0],
+              #[-199.85, 200.87, -0.521], #0],
+              #[200.67, 200.46, -0.294], #0],
             ])
 
 motor_pos_samp = np.array(
             [
-               [0,0,0,0],
-               [-3602.33, 298.79, 5238.63, 576.91,  ],
-               [-3524.99, 5434.89, -1170.04, 734.34,  ],
-               [4091.48, 554.49, -5127.85, 731.61,  ],
-               [4030.31, -5413.11, 2056.51, 573.32,  ],
-               [2169.85, 2176.20, 2286.17, -19236.88,  ],
-               [2678.39, 6333.78, -2229.26, -18149.32,  ],
-               [8050.31, 3287.79, -4644.66, -17241.76,  ],
-               [7807.11, -4014.60, 3629.79, -18006.33,  ],
-               [8050.47, -5316.00, 5367.43, -17543.66,  ],
-               [-1123.25, 2413.00, 7189.07, -18498.38,  ],
-               [-1377.10, 4754.60, 4130.07, -18811.40,  ],
-               [6793.76, 6516.43, 6978.43, -38306.95,  ],
-               [6993.55, 8981.18, 4328.00, -37597.85,  ],
-               [8431.25, 6675.74, 4911.03, -37958.17,  ],
-               [10050.68, 5693.20, 4288.40, -37539.39,  ],
-               [10050.68, 3215.88, 7138.63, -37678.89,  ],
-               [10188.45, 2064.54, 8630.30, -37326.44,  ],
-               [6843.29, 7683.97, 5624.65, -38093.35,  ],
-               [10050.67, 5693.11, 4287.45, -37539.31,  ],
-               [6993.59, 4277.63, 9730.37, -37878.09,  ],
-               [10036.10, -10489.40, 2532.32, 2636.98,  ],
-               [-5074.01, 689.36, 7851.53, 1293.21,  ],
-               [2397.58, -335.64, 5499.65, -18922.93,  ],
-               [3723.43, 8847.10, 8508.66, -37724.91,  ],
-               [3778.36, 9895.85, 7309.68, -37514.10,  ],
+               [9568.20, -1954.78, -6728.08, 1.80,  ],
+               [9679.44, -9815.10, 2424.67, 1.39,  ],
+               [1610.73, 2192.66, 5428.78, -22385.79,  ],
+               [8571.15, 2945.31, -2174.37, -22384.61,  ],
+               [8610.92, 8887.24, -3690.93, -25555.04,  ],
+               [8612.37, -5273.09, 3779.56, -16405.40,  ],
+               [6864.52, -4144.30, -358.82, -8330.11,  ],
+               [1465.66, 2095.35, -3899.67, 385.29,  ],
+
+               #[-3602.33, 298.79, 5238.63, 576.91,  ],
+               #[-3524.99, 5434.89, -1170.04, 734.34,  ],
+               #[4091.48, 554.49, -5127.85, 731.61,  ],
+               #[4030.31, -5413.11, 2056.51, 573.32,  ],
+               #[2169.85, 2176.20, 2286.17, -19236.88,  ],
+               #[2678.39, 6333.78, -2229.26, -18149.32,  ],
+               #[8050.31, 3287.79, -4644.66, -17241.76,  ],
+               #[7807.11, -4014.60, 3629.79, -18006.33,  ],
+               #[8050.47, -5316.00, 5367.43, -17543.66,  ],
+               #[-1123.25, 2413.00, 7189.07, -18498.38,  ],
+               #[-1377.10, 4754.60, 4130.07, -18811.40,  ],
+               #[6793.76, 6516.43, 6978.43, -38306.95,  ],
+               #[6993.55, 8981.18, 4328.00, -37597.85,  ],
+               #[8431.25, 6675.74, 4911.03, -37958.17,  ],
+               #[10050.68, 5693.20, 4288.40, -37539.39,  ],
+               #[10050.68, 3215.88, 7138.63, -37678.89,  ],
+               #[10188.45, 2064.54, 8630.30, -37326.44,  ],
+               #[6843.29, 7683.97, 5624.65, -38093.35,  ],
+               #[10050.67, 5693.11, 4287.45, -37539.31,  ],
+               #[6993.59, 4277.63, 9730.37, -37878.09,  ],
+               #[10036.10, -10489.40, 2532.32, 2636.98,  ],
+               #[-5074.01, 689.36, 7851.53, 1293.21,  ],
+               #[2397.58, -335.64, 5499.65, -18922.93,  ],
+               #[3723.43, 8847.10, 8508.66, -37724.91,  ],
+               #[3778.36, 9895.85, 7309.68, -37514.10,  ],
             ])
 
 
@@ -320,7 +344,6 @@ def cost_sq(anchors, pos, samp):
         pow((distance_samples_relative_to_origin_no_fuzz(anchors, pos) - samp), 2)
     )
 
-
 def cost_sq_for_pos_samp(
     anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r, line_lengths_origin
 ):
@@ -342,9 +365,27 @@ def cost_sq_for_pos_samp(
             distance_samples_relative_to_origin_no_fuzz(anchors, pos)
             - motor_pos_samples_to_line_length_with_buildup_compensation(
                 motor_pos_samp, spool_buildup_factor, spool_r
-            # TODO: minus flexlength in that position
-            ),
-            2,
+             ),
+            2
+        ) + line_lengths_origin_err.dot(line_lengths_origin_err)
+    )
+
+def cost_sq_for_pos_samp_with_flex(
+    anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r, line_lengths_origin
+):
+    """
+    Creates samples based on guessed anchor and data collection positions.
+    Takes line flex into account when generating the samples.
+    """
+    line_lengths_origin_err = np.linalg.norm(anchors, 2, 1) - line_lengths_origin
+
+    return np.sum(
+        pow(
+            distance_samples_relative_to_origin_no_fuzz(anchors, pos)
+            - (motor_pos_samples_to_line_length_with_buildup_compensation(
+                motor_pos_samp, spool_buildup_factor, spool_r
+             ) + flex_distance(abc_axis_max_force, anchors, pos, mechanical_advantage, springKPerUnitLength, mover_weight)),
+            2
         ) + line_lengths_origin_err.dot(line_lengths_origin_err)
     )
 
@@ -360,7 +401,12 @@ def cost_sq_for_pos_samp_forward_transform(
         diff = pos[i] - forward_transform(anchors, line_length_samp[i])
         tot_err += diff.dot(diff)
 
-    return tot_err
+    return tot_err + line_lengths_origin_err.dot(line_lengths_origin_err)
+
+def cost_sq_for_pos_samp_combined(
+    anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r, line_lengths_origin
+):
+    return cost_sq_for_pos_samp_forward_transform(anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r, line_lengths_origin) + cost_sq_for_pos_samp(anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r, line_lengths_origin)
 
 
 def anchorsvec2matrix(anchorsvec):
@@ -448,9 +494,6 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_origin, method, debug=False)
             line_lengths_origin,
         )
 
-    l_long = 4000.0
-    l_short = 3000.0
-    data_z_min = -100.0
     # Limits of anchor positions:
     #     |ANCHOR_XY|    < 4000
     #      ANCHOR_B_X    > 0
@@ -692,8 +735,10 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_origin, method, debug=False)
             random_guess = np.array([ b[0] + (b[1] - b[0])*np.random.rand() for b in list(zip(lb, ub)) ])
             sol = scipy.optimize.minimize(
                 lambda x: costx(
-                    cost_sq_for_pos_samp_forward_transform,
-                    x[params_anch:-params_buildup],
+                    cost_sq_for_pos_samp,
+                    #cost_sq_for_pos_samp_forward_transform,
+                    #cost_sq_for_pos_samp_combined,
+                    #cost_sq_for_pos_samp_with_flex,
                     x[0:params_anch],
                     constant_spool_buildup_factor,
                     x[-params_buildup :],
@@ -923,7 +968,9 @@ if __name__ == "__main__":
             )
         else:
             pos = np.reshape([x for x in solution[params_anch:-params_buildup]], (u, 3))
-        return cost_sq_for_pos_samp_forward_transform(
+        return cost_sq_for_pos_samp(
+        #return cost_sq_for_pos_samp_forward_transform(
+        #return cost_sq_for_pos_samp_with_flex(
             anch,
             pos,
             motor_pos_samp,
