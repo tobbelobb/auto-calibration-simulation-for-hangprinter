@@ -158,7 +158,7 @@ The program will print a warning if you have too few data points.
 Ideal data points collected on an ideal machine would give `total cost: 0.000000` for any sample size above 10.
 In real life this does not happen.
 The `cost per sample` value let you compare results from your different data sets of unequal size.
-In my experience, a `cost per sample` below 1.0, in combination with a large number of samples (>20) and
+In my experience, a `cost per sample` below 2.0, in combination with a large number of samples (>20) and
 a >12 number of input xyz coords, generally means you've found yourself a very good config.
 
 The second block contains the anchor positions and spool radii that the script found to work best.
