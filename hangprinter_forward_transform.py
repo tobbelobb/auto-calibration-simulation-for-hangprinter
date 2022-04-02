@@ -23,25 +23,14 @@ def forward_transform(anchors, line_length_samp):
     x_angle = np.arctan(anchors[D][Y]/anchors[D][Z])
     rxt = np.array([[1, 0, 0], [0, np.cos(x_angle), np.sin(x_angle)], [0, -np.sin(x_angle), np.cos(x_angle)]]);
     anchors_tmp0 = np.matmul(anchors, rxt)
-    #anchors_tmp0 = np.zeros((4,3))
-    #for row in range(4):
-    #    for col in range(3):
-    #        anchors_tmp0[row][col] = rxt[0][col]*anchors[row][0] + rxt[1][col]*anchors[row][1] + rxt[2][col]*anchors[row][2];
 
     y_angle = np.arctan(-anchors_tmp0[D][X]/anchors_tmp0[D][Z]);
     ryt = np.array([[np.cos(y_angle), 0, -np.sin(y_angle)], [0, 1, 0], [np.sin(y_angle), 0, np.cos(y_angle)]]);
     anchors_tmp1 = np.matmul(anchors_tmp0, ryt)
-    #anchors_tmp1 = np.zeros((4,3))
-    #for row in range(4):
-    #    for col in range(3):
-    #        anchors_tmp1[row][col] = ryt[0][col]*anchors_tmp0[row][0] + ryt[1][col]*anchors_tmp0[row][1] + ryt[2][col]*anchors_tmp0[row][2];
 
     z_angle = np.arctan(anchors_tmp1[A][X]/anchors_tmp1[A][Y]);
     rzt = np.array([[np.cos(z_angle), np.sin(z_angle), 0], [-np.sin(z_angle), np.cos(z_angle), 0], [0, 0, 1]]);
     anchors_tmp0 = np.matmul(anchors_tmp1, rzt)
-    #for row in range(4):
-    #    for col in range(3):
-    #        anchors_tmp0[row][col] = rzt[0][col]*anchors_tmp1[row][0] + rzt[1][col]*anchors_tmp1[row][1] + rzt[2][col]*anchors_tmp1[row][2];
 
     Asq = distances_origin[A] * distances_origin[A]
     Bsq = distances_origin[B] * distances_origin[B]
@@ -56,22 +45,17 @@ def forward_transform(anchors, line_length_samp):
     k1c = (anchors_tmp0[C][Y] * (anchors_tmp0[A][Z] - anchors_tmp0[D][Z])) / (anchors_tmp0[A][Y] * anchors_tmp0[C][X]) + (anchors_tmp0[D][Z] - anchors_tmp0[C][Z]) / anchors_tmp0[C][X];
 
     machinePos_tmp0 = np.zeros(3)
-    machinePos_tmp0[Z] = (k0b - k0c) / (k1c - k1b)
+    if abs(k1c - k1b) > 0.000001:
+        machinePos_tmp0[Z] = (k0b - k0c) / (k1c - k1b)
+    else:
+        return machinePos_tmp0
     machinePos_tmp0[X] = k0c + k1c * machinePos_tmp0[Z];
     machinePos_tmp0[Y] = (Asq - Dsq - aa + dd) / (2.0 * anchors_tmp0[A][Y]) + ((anchors_tmp0[D][Z] - anchors_tmp0[A][Z]) / anchors_tmp0[A][Y]) * machinePos_tmp0[Z];
 
     # Rotate machinePos_tmp back to original coordinate system
     machinePos_tmp1 = np.matmul(rzt, machinePos_tmp0)
-    #for row in range(3):
-    #    machinePos_tmp1[row] = rzt[row][0]*machinePos_tmp0[0] + rzt[row][1]*machinePos_tmp0[1] + rzt[row][2]*machinePos_tmp0[2];
-
     machinePos_tmp0 = np.matmul(ryt, machinePos_tmp1)
-    #for row in range(3):
-    #    machinePos_tmp0[row] = ryt[row][0]*machinePos_tmp1[0] + ryt[row][1]*machinePos_tmp1[1] + ryt[row][2]*machinePos_tmp1[2];
-
     machinePos_tmp1 = np.matmul(rxt, machinePos_tmp0)
-    #for row in range(3):
-    #    machinePos[row] = rxt[row][0]*machinePos_tmp0[0] + rxt[row][1]*machinePos_tmp0[1] + rxt[row][2]*machinePos_tmp0[2];
 
     return machinePos_tmp1
 
