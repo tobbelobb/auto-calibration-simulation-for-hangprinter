@@ -31,6 +31,9 @@ mover_weight = 1.0
 l_long = 14000.0 # The longest distance from the origin that we should consider for anchor positions
 l_short = 3000.0 # The longest distance from the origin that we should consider for data point collection
 data_z_min = -100.0 # The lowest z-coordinate the algorithm should care about guessing
+perturb_max = 3;
+
+
 line_lengths_origin = np.array([1597, 1795, 1582.5, 2355])
 
 xyz_of_samp = np.array(
@@ -453,6 +456,11 @@ def pre_list(l, num):
     )
 
 
+#def solve2(motor_pos_samp, xyz_of_samp, line_lengths_origin, method, debug=False):
+#    sol = scipy.optimize.minimize(
+#            lambda x: costx(
+
+
 def solve(motor_pos_samp, xyz_of_samp, line_lengths_origin, method, debug=False):
     """Find reasonable positions and anchors given a set of samples.
     """
@@ -463,7 +471,7 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_origin, method, debug=False)
     ux = np.shape(xyz_of_samp)[0]
     number_of_params_pos = 3 * (u - ux)
 
-    def costx(_cost, posvec, anchvec, spool_buildup_factor, spool_r, u, line_lengths_origin):
+    def costx(_cost, posvec, anchvec, spool_buildup_factor, spool_r, perturb, u, line_lengths_origin):
         """Identical to cost, except the shape of inputs and capture of samp, xyz_of_samp, ux, and u
 
         Parameters
@@ -488,7 +496,7 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_origin, method, debug=False)
         return _cost(
             anchors,
             pos,
-            motor_pos_samp[:u],
+            motor_pos_samp[:u] + np.reshape(perturb, (u, 4)),
             spool_buildup_factor,
             spool_r,
             line_lengths_origin,
@@ -525,6 +533,7 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_origin, method, debug=False)
          spool_r_in_origin_first_guess[1] - 1.0,
          spool_r_in_origin_first_guess[2] - 1.0,
          spool_r_in_origin_first_guess[3] - 1.0]
+      + [-perturb_max]*(u*4)
     )
     ub = np.array(
       [
@@ -546,6 +555,7 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_origin, method, debug=False)
          spool_r_in_origin_first_guess[1] + 5.0,
          spool_r_in_origin_first_guess[2] + 5.0,
          spool_r_in_origin_first_guess[3] + 5.0]
+      + [perturb_max]*(u*4)
     )
 
     pos_est = np.zeros((u - ux, 3))  # The positions we need to estimate
@@ -556,6 +566,7 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_origin, method, debug=False)
             list(anchorsmatrix2vec(anchors_est))[0:params_anch]
         + list(posmatrix2vec(pos_est))
         + spool_r_in_origin_first_guess
+        + [0.0]*(u*4)
     )
 
     disp = False
@@ -727,9 +738,9 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_origin, method, debug=False)
         best_x = x_guess
         killer = GracefulKiller()
         print("Hit Ctrl+C and wait a bit to stop solver and get current best solution.")
-        for i in range(5):
+        for i in range(10):
             if disp:
-                print("Try: %d/5" % i)
+                print("Try: %d/10" % i)
             if killer.kill_now:
                 break
             random_guess = np.array([ b[0] + (b[1] - b[0])*np.random.rand() for b in list(zip(lb, ub)) ])
@@ -739,9 +750,11 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_origin, method, debug=False)
                     #cost_sq_for_pos_samp_forward_transform,
                     #cost_sq_for_pos_samp_combined,
                     #cost_sq_for_pos_samp_with_flex,
+                    x[params_anch:-(params_buildup + u*4)],
                     x[0:params_anch],
                     constant_spool_buildup_factor,
-                    x[-params_buildup :],
+                    x[-(params_buildup + u*4) : -(u*4)],
+                    x[-(u*4):],
                     u,
                     line_lengths_origin,
                 ),
@@ -955,19 +968,19 @@ if __name__ == "__main__":
         anch = np.zeros((4, 3))
         anch = anchorsvec2matrix(solution[0:params_anch])
         spool_buildup_factor = constant_spool_buildup_factor
-        spool_r = np.array([x for x in solution[-params_buildup :]])
+        spool_r = np.array([x for x in solution[-(params_buildup+4*u) :-(4*u)]])
         pos = np.zeros((u, 3))
         if np.size(xyz_of_samp) != 0:
             pos = np.vstack(
                 (
                     xyz_of_samp,
                     np.reshape(
-                        solution[params_anch:-params_buildup], (u - ux, 3)
+                        solution[params_anch:-(params_buildup+4*u)], (u - ux, 3)
                     ),
                 )
             )
         else:
-            pos = np.reshape([x for x in solution[params_anch:-params_buildup]], (u, 3))
+            pos = np.reshape([x for x in solution[params_anch:-(params_buildup+u*4)]], (u, 3))
         return cost_sq_for_pos_samp(
         #return cost_sq_for_pos_samp_forward_transform(
         #return cost_sq_for_pos_samp_with_flex(
@@ -1000,19 +1013,19 @@ if __name__ == "__main__":
                 np.set_printoptions(suppress=True)
                 self.anch = anchorsvec2matrix(self.solution[0:params_anch])
                 self.spool_buildup_factor = constant_spool_buildup_factor #self.solution[-params_buildup]
-                self.spool_r = self.solution[-params_buildup :]
+                self.spool_r = self.solution[-(params_buildup+u*4) : -(u*4)]
                 if np.size(xyz_of_samp) != 0:
                     self.pos = np.vstack(
                         (
                             xyz_of_samp,
                             np.reshape(
-                                solution[params_anch:-params_buildup], (u - ux, 3)
+                                solution[params_anch:-(params_buildup+u*4)], (u - ux, 3)
                             ),
                         )
                     )
                 else:
                     self.pos = np.reshape(
-                        solution[params_anch:-params_buildup], (u, 3)
+                        solution[params_anch:-(params_buildup+u*4)], (u, 3)
                     )
 
     the_cand = candidate("no_name", np.zeros(ndim))
