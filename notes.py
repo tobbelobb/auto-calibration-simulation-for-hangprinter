@@ -16,9 +16,7 @@ anchors = np.array(
 )
 
 
-def how_big_spool_r_difference_will_static_buildup_compensation_make(
-    line_on_spool, spool_buildup_factor, spool_r
-):
+def how_big_spool_r_difference_will_static_buildup_compensation_make(line_on_spool, spool_buildup_factor, spool_r):
     """How much will the spool radii increase if we wind an amount of line around it?
 
     Derivation: Imagine that the spool is made up of wound line all the way to the core.
@@ -36,8 +34,7 @@ def how_big_spool_r_difference_will_static_buildup_compensation_make(
     """
     line_to_build_up_spool_r = (spool_r ** 2) / spool_buildup_factor
     return np.sqrt(spool_buildup_factor) * (
-        np.sqrt(line_on_spool + line_to_build_up_spool_r)
-        - np.sqrt(line_to_build_up_spool_r)
+        np.sqrt(line_on_spool + line_to_build_up_spool_r) - np.sqrt(line_to_build_up_spool_r)
     )
 
 
@@ -50,11 +47,8 @@ def how_big_difference_will_static_buildup_compensation_make(
     line_on_spool_when_at_the_origin,
 ):
     samp = samples_relative_to_origin_no_fuzz(anchors, pos)
-    compensated_spool_r = (
-        spool_r
-        + how_big_spool_r_difference_will_static_buildup_compensation_make(
-            line_on_spool_when_at_the_origin, spool_buildup_factor, spool_r
-        )
+    compensated_spool_r = spool_r + how_big_spool_r_difference_will_static_buildup_compensation_make(
+        line_on_spool_when_at_the_origin, spool_buildup_factor, spool_r
     )
     buildup_comp = mech_adv * samp * 360 / (2 * np.pi * compensated_spool_r)
     no_buildup_comp = mech_adv * samp * 360 / (2 * np.pi * spool_r)
@@ -89,9 +83,7 @@ def buildup_compensation(
     spool_r_after_static_compensation,
 ):
     samp = samples_relative_to_origin_no_fuzz(anchors, pos)
-    no_buildup_comp = (
-        mech_adv * samp * 360 / (2 * np.pi * spool_r_before_static_compensation)
-    )
+    no_buildup_comp = mech_adv * samp * 360 / (2 * np.pi * spool_r_before_static_compensation)
     # Gear ratio is always 1 since we're only considering spool rotations
     buildup_comp = motor_pos_samples_with_spool_buildup_compensation(
         anchors,
@@ -123,11 +115,9 @@ def buildup_compensation(
     )
 
 
-def how_big_difference_will_dynamic_buildup_compensation_make(
-    anchors, pos, spool_buildup_factor, mech_adv, spool_r
-):
+def how_big_difference_will_dynamic_buildup_compensation_make(anchors, pos, spool_buildup_factor, mech_adv, spool_r):
     """For each position in pos, compute how large effect the compensation will have.
-       Returned unit is "mm of effector movement towards or away from anchor".
+    Returned unit is "mm of effector movement towards or away from anchor".
     """
     return buildup_compensation(
         anchors,
@@ -148,7 +138,7 @@ def how_big_difference_will_buildup_compensation_make(
     line_on_spool_when_at_the_origin,
 ):
     """For each position in pos, compute how large effect the compensation will have.
-       Returned unit is "mm of effector movement towards or away from anchor".
+    Returned unit is "mm of effector movement towards or away from anchor".
     """
     return buildup_compensation(
         anchors,
@@ -326,22 +316,22 @@ hp4_comp = how_big_difference_will_buildup_compensation_make(
 ################################################################################################
 ######## Comparing Significance of Static and Dynamic Compensation #############################
 ################################################################################################
-#hp4_static_comp
+# hp4_static_comp
 # array([[-7.67402308, -5.88140343, -5.58797583, -1.93535984],
 #        [-6.72717476, -8.52953831, -5.88886442, -2.33358816],
 #        [-5.58797583, -5.04252281, -7.67402308, -1.93535984],
 #        [-5.85402535, -5.50418169, -5.85402535, -8.92192291]])
-#hp4_dyn_comp
+# hp4_dyn_comp
 # array([[-2.48473373,  1.47529279,  1.33144475,  0.24868453],
 #        [ 1.93141853, -3.0675503 ,  1.47904705,  0.36169841],
 #        [ 1.33144475,  1.08372734, -2.48473373,  0.24868453],
 #        [ 1.46155763,  1.29172619,  1.46155763, -5.22840237]])
-#hp4_comp
+# hp4_comp
 # array([[-10.13545333,  -4.41994691,  -4.26901825,  -1.68854468],
 #        [ -4.81387036, -11.56831908,  -4.42368885,  -1.97460865],
 #        [ -4.26901825,  -3.96895939, -10.13545333,  -1.68854468],
 #        [ -4.40617518,  -4.22457017,  -4.40617518, -14.11102321]])
-dynamic_adjustment_hp4 = hp4_dyn_comp/hp4_static_comp
+dynamic_adjustment_hp4 = hp4_dyn_comp / hp4_static_comp
 # array([[ 0.32378502, -0.25084026, -0.2382696 , -0.12849524],
 #        [-0.28710694,  0.35963849, -0.25115998, -0.15499668],
 #        [-0.2382696 , -0.21491769,  0.32378502, -0.12849524],
@@ -372,4 +362,3 @@ dynamic_adjustment_hp4 = hp4_dyn_comp/hp4_static_comp
 # Shorter answer:
 # We want to move to the ceiling during the homing procedure.
 # We need that move to be controlled an accurate.
-
