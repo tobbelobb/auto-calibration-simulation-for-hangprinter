@@ -13,7 +13,7 @@ import signal
 import time
 
 from hangprinter_forward_transform import forward_transform
-from flex_distance import flex_distance
+from flex_distance import *
 
 # Config values should be based on HP4 defaults
 ## Spool buildup
@@ -311,6 +311,24 @@ def motor_pos_samples_to_distances_relative_to_origin(
     return (((motor_samps / k0) + spool_r) ** 2.0 - spool_r * spool_r) / c1
 
 
+def cost_from_forces(anchors, pos, force_samps, mover_weight):
+    [ABC_forces_pre, D_forces_pre, ABC_forces_grav, D_forces_grav] = forces_gravity_and_pretension(
+        abc_axis_max_force, anch_to_pos, distances, mover_weight
+    )
+
+    synthetic_forces_pre = np.c_[ABC_forces_pre, D_forces_pre]
+    synthetic_forces_grav = np.c_[ABC_forces_grav, D_forces_grav]
+
+    # Remove gravity related forces from force_samp
+    force_samps_pre = force_samps - synthetic_forces_grav
+
+    # Normalize. we don't care about pretension force sizes
+    synthetic_forces_pre = synthetic_forces_pre / np.linalg.norm(synthetic_forces_pre, 2, 1)[:, np.newaxis]
+    force_samps_pre = force_samps_pre / np.linalg.norm(force_samps_pre, 2, 1)[:, np.newaxis]
+
+    return np.sum(pow(synthetic_force_pre - force_samp_pre, 2))
+
+
 def cost_sq_for_pos_samp(anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r, line_lengths_when_at_origin):
     """
     Sum of squares
@@ -328,9 +346,7 @@ def cost_sq_for_pos_samp(anchors, pos, motor_pos_samp, spool_buildup_factor, spo
             pow(
                 distance_samples_relative_to_origin(anchors, pos)
                 - (
-                    motor_pos_samples_to_distances_relative_to_origin(
-                        motor_pos_samp, spool_buildup_factor, spool_r
-                    )
+                    motor_pos_samples_to_distances_relative_to_origin(motor_pos_samp, spool_buildup_factor, spool_r)
                     + flex_distance(
                         abc_axis_max_force, anchors, pos, mechanical_advantage, springKPerUnitLength, mover_weight
                     )
@@ -342,9 +358,7 @@ def cost_sq_for_pos_samp(anchors, pos, motor_pos_samp, spool_buildup_factor, spo
         err = np.sum(
             pow(
                 distance_samples_relative_to_origin(anchors, pos)
-                - motor_pos_samples_to_distances_relative_to_origin(
-                    motor_pos_samp, spool_buildup_factor, spool_r
-                ),
+                - motor_pos_samples_to_distances_relative_to_origin(motor_pos_samp, spool_buildup_factor, spool_r),
                 2,
             )
         )
@@ -879,7 +893,7 @@ if __name__ == "__main__":
         else:
             pos = np.reshape([x for x in solution[params_anch : -(params_buildup + params_perturb)]], (u, 3))
         return cost_sq_for_pos_samp(
-        #return cost_sq_for_pos_samp_forward_transform(
+            # return cost_sq_for_pos_samp_forward_transform(
             anch,
             pos + solution[-params_perturb:],
             motor_pos_samp,
