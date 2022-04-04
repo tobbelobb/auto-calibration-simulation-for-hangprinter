@@ -18,7 +18,7 @@ from flex_distance import flex_distance
 # Config values should be based on HP4 defaults
 ## Spool buildup
 constant_spool_buildup_factor = 0.08  # Qualified first guess for 1.1 mm line
-spool_r_in_origin_first_guess = [75.0, 75.0, 75.0, 75.0]
+spool_r_in_origin_first_guess = np.array([75.0, 75.0, 75.0, 75.0])
 spool_gear_teeth = 255
 motor_gear_teeth = 20
 mechanical_advantage = np.array([2.0, 2.0, 2.0, 4.0])
@@ -28,12 +28,12 @@ lines_per_spool = np.array([1.0, 1.0, 1.0, 1.0])
 abc_axis_max_force = 20
 springKPerUnitLength = 20000.0
 mover_weight = 1.0
-use_flex = False  # Toggle the use of flex compensation in the algorithm
+use_flex = True  # Toggle the use of flex compensation in the algorithm
 
 ## Algorithm help and tuning
 line_lengths_when_at_origin = np.array([1597, 1795, 1582.5, 2355])
 # line_lengths_when_at_origin = np.array([865, 870, 925, 1500])
-use_line_lengths_at_origin_data = False  # Toggle the enforcement of measured distances when at origin
+use_line_lengths_at_origin_data = True  # Toggle the enforcement of measured distances when at origin
 
 l_long = 14000.0  # The longest distance from the origin that we should consider for anchor positions
 l_short = 3000.0  # The longest distance from the origin that we should consider for data point collection
@@ -215,43 +215,7 @@ def symmetric_anchors(l, az=-120.0, bz=-120.0, cz=-120.0):
     return anchors
 
 
-def centered_rand(l):
-    """Sample from U(-l, l)"""
-    return l * (2.0 * np.random.rand() - 1.0)
-
-
-def irregular_anchors(l, fuzz_percentage=0.2, az=-120.0, bz=-120.0, cz=-120.0):
-    """Realistic exact positions of anchors.
-
-    Each dimension of each anchor is treated separately to
-    resemble the use case.
-    Six anchor coordinates must be constant and known
-    for the coordinate system to be uniquely defined by them.
-    A 3d coordinate system, like a rigid body, has six degrees of freedom.
-
-    Parameters
-    ---------
-    l : The line length to create the symmetric anchors first
-    fuzz_percentage : Percentage of l that line lenghts are allowed to differ
-                      (except Z-difference of B- and C-anchors)
-    """
-    fuzz = np.array(np.zeros((4, 3)))
-    fuzz[A, X] = 0
-    fuzz[A, Y] = centered_rand(l * fuzz_percentage)
-    fuzz[A, Z] = az * fuzz_percentage
-    fuzz[B, X] = centered_rand(l * fuzz_percentage * np.cos(np.pi / 6))
-    fuzz[B, Y] = centered_rand(l * fuzz_percentage * np.sin(np.pi / 6))
-    fuzz[B, Z] = bx * fuzz_percentage
-    fuzz[C, X] = centered_rand(l * fuzz_percentage * np.cos(np.pi / 6))
-    fuzz[C, Y] = centered_rand(l * fuzz_percentage * np.sin(np.pi / 6))
-    fuzz[C, Z] = cz * fuzz_percentage
-    fuzz[D, X] = 0
-    fuzz[D, Y] = 0
-    fuzz[D, Z] = l * fuzz_percentage * np.random.rand()  # usually higher than A is long
-    return symmetric_anchors(l, az, bz, cz) + fuzz
-
-
-def positions(n, l, fuzz=10):
+def positions(n, l, fuzz=0):
     """Return (n^3)x3 matrix of positions in fuzzed grid of side length 2*l
 
     Move to u=n^3 positions in an fuzzed grid of side length 2*l
@@ -278,37 +242,7 @@ def positions(n, l, fuzz=10):
     return pos
 
 
-def samples(anchors, pos, fuzz=1):
-    """Possible relative line length measurments according to anchors and position.
-
-    Parameters
-    ----------
-    anchors : 4x3 matrix of anhcor positions in mm
-    pos : ux3 matrix of positions
-    fuzz: Maximum measurment error per motor in mm
-    """
-    # pos[:,np.newaxis,:]: ux1x3
-    # Broadcasting happens u times and we get ux4x3 output before norm operation
-    line_lengths = np.linalg.norm(anchors - pos[:, np.newaxis, :], 2, 2)
-    return line_lengths - line_lengths[0] + 2.0 * fuzz * (np.random.rand(np.shape(pos)[0], 1) - 0.5)
-
-
-def samples_relative_to_origin(anchors, pos, fuzz=1):
-    """Possible relative line length measurments according to anchors and position.
-
-    Parameters
-    ----------
-    anchors : 4x3 matrix of anhcor positions in mm
-    pos : ux3 matrix of positions
-    fuzz: Maximum measurment error per motor in mm
-    """
-    # pos[:,np.newaxis,:]: ux1x3
-    # Broadcasting happens u times and we get ux4x3 output before norm operation
-    line_lengths = np.linalg.norm(anchors - pos[:, np.newaxis, :], 2, 2)
-    return line_lengths - np.linalg.norm(anchors, 2, 1) + 2.0 * fuzz * (np.random.rand(np.shape(pos)[0], 1) - 0.5)
-
-
-def distance_samples_relative_to_origin_no_fuzz(anchors, pos):
+def distance_samples_relative_to_origin(anchors, pos):
     """Possible relative line length measurments according to anchors and position.
 
     Parameters
@@ -323,16 +257,19 @@ def distance_samples_relative_to_origin_no_fuzz(anchors, pos):
     return line_lengths - np.linalg.norm(anchors, 2, 1)
 
 
-def motor_pos_samples_with_spool_buildup_compensation(
+def pos_to_motor_pos_samples(
     anchors,
     pos,
     spool_buildup_factor=constant_spool_buildup_factor,
-    spool_r_in_origin=np.array(spool_r_in_origin_first_guess),
+    spool_r_in_origin=spool_r_in_origin_first_guess,
     spool_to_motor_gearing_factor=spool_gear_teeth / motor_gear_teeth,
     mech_adv_=mechanical_advantage,
     lines_per_spool_=lines_per_spool,
 ):
-    """What motor positions (in degrees) motors would be at"""
+    """
+    What motor positions (in degrees) motors would be at,
+    given anchor and data collection positions.
+    """
 
     # Assure np.array type
     spool_r_in_origin = np.array(spool_r_in_origin)
@@ -349,13 +286,13 @@ def motor_pos_samples_with_spool_buildup_compensation(
     degrees_per_unit_times_r = (spool_to_motor_gearing_factor * mech_adv_ * 360.0) / (2.0 * np.pi)
     k0 = 2.0 * degrees_per_unit_times_r / k2
 
-    relative_line_lengths = distance_samples_relative_to_origin_no_fuzz(anchors, pos)
+    relative_line_lengths = distance_samples_relative_to_origin(anchors, pos)
     motor_positions = k0 * (np.sqrt(spool_r_in_origin_sq + relative_line_lengths * k2) - spool_r_in_origin)
 
     return motor_positions
 
 
-def motor_pos_samples_to_line_length_with_buildup_compensation(
+def motor_pos_samples_to_distances_relative_to_origin(
     motor_samps,
     spool_buildup_factor=constant_spool_buildup_factor,
     spool_r=spool_r_in_origin_first_guess,
@@ -374,43 +311,6 @@ def motor_pos_samples_to_line_length_with_buildup_compensation(
     return (((motor_samps / k0) + spool_r) ** 2.0 - spool_r * spool_r) / c1
 
 
-def cost(anchors, pos, samp):
-    """If all positions and samples correspond perfectly, this returns 0.
-
-    This is the systems of equations:
-    sum for i from 1 to u
-      sum for k from a to d
-    |sqrt(sum for s from x to z (A_ks-s_i)^2) - sqrt(sum for s from x to z (A_ks-s_0)^2) - t_ik|
-
-    or...
-    sum for i from 1 to u
-    |sqrt((A_ax-x_i)^2 + (A_ay-y_i)^2 + (A_az-z_i)^2) - sqrt((A_ax-x_0)^2 + (A_ay-y_0)^2 + (A_az-z_0)^2) - t_ia| +
-    |sqrt((A_bx-x_i)^2 + (A_by-y_i)^2 + (A_bz-z_i)^2) - sqrt((A_bx-x_0)^2 + (A_by-y_0)^2 + (A_bz-z_0)^2) - t_ib| +
-    |sqrt((A_cx-x_i)^2 + (A_cy-y_i)^2 + (A_cz-z_i)^2) - sqrt((A_cx-x_0)^2 + (A_cy-y_0)^2 + (A_cz-z_0)^2) - t_ic| +
-    |sqrt((A_dx-x_i)^2 + (A_dy-y_i)^2 + (A_dz-z_i)^2) - sqrt((A_dx-x_0)^2 + (A_dy-y_0)^2 + (A_dz-z_0)^2) - t_id|
-
-    Parameters
-    ---------
-    anchors : 4x3 matrix of anchor positions
-    pos: ux3 matrix of positions
-    samp : ux4 matrix of corresponding samples
-    """
-    return np.sum(np.abs(distance_samples_relative_to_origin_no_fuzz(anchors, pos) - samp))
-
-
-def cost_sq(anchors, pos, samp):
-    """
-    For all samples sum
-    (Sample value if anchor position A and cartesian position x were guessed   - actual sample)^2
-
-    (sqrt((A_ax-x_i)^2 + (A_ay-y_i)^2 + (A_az-z_i)^2) - sqrt(A_ax^2 + A_ay^2 + A_az^2) - t_ia)^2 +
-    (sqrt((A_bx-x_i)^2 + (A_by-y_i)^2 + (A_bz-z_i)^2) - sqrt(A_bx^2 + A_by^2 + A_bz^2) - t_ib)^2 +
-    (sqrt((A_cx-x_i)^2 + (A_cy-y_i)^2 + (A_cz-z_i)^2) - sqrt(A_cx^2 + A_cy^2 + A_cz^2) - t_ic)^2 +
-    (sqrt((A_dx-x_i)^2 + (A_dy-y_i)^2 + (A_dz-z_i)^2) - sqrt(A_dx^2 + A_dy^2 + A_dz^2) - t_id)^2
-    """
-    return np.sum(pow((distance_samples_relative_to_origin_no_fuzz(anchors, pos) - samp), 2))
-
-
 def cost_sq_for_pos_samp(anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r, line_lengths_when_at_origin):
     """
     Sum of squares
@@ -419,24 +319,19 @@ def cost_sq_for_pos_samp(anchors, pos, motor_pos_samp, spool_buildup_factor, spo
     May take line flex into account when generating the samples.
 
     For all samples sum
-    (Sample value if anchor position A and cartesian position x were guessed   - actual sample)^2
-
-    (sqrt((A_ax-x_i)^2 + (A_ay-y_i)^2 + (A_az-z_i)^2) - sqrt(A_ax^2 + A_ay^2 + A_az^2) - motor_pos_to_samp(t_ia))^2 +
-    (sqrt((A_bx-x_i)^2 + (A_by-y_i)^2 + (A_bz-z_i)^2) - sqrt(A_bx^2 + A_by^2 + A_bz^2) - motor_pos_to_samp(t_ib))^2 +
-    (sqrt((A_cx-x_i)^2 + (A_cy-y_i)^2 + (A_cz-z_i)^2) - sqrt(A_cx^2 + A_cy^2 + A_cz^2) - motor_pos_to_samp(t_ic))^2 +
-    (sqrt((A_dx-x_i)^2 + (A_dy-y_i)^2 + (A_dz-z_i)^2) - sqrt(A_dx^2 + A_dy^2 + A_dz^2) - motor_pos_to_samp(t_id))^2
+    (Sample value if anchor position A and cartesian position x were guessed - actual sample)^2
     """
 
     err = 0
     if use_flex:
         err = np.sum(
             pow(
-                distance_samples_relative_to_origin_no_fuzz(anchors, pos)
+                distance_samples_relative_to_origin(anchors, pos)
                 - (
-                    motor_pos_samples_to_line_length_with_buildup_compensation(
+                    motor_pos_samples_to_distances_relative_to_origin(
                         motor_pos_samp, spool_buildup_factor, spool_r
                     )
-                    - flex_distance(
+                    + flex_distance(
                         abc_axis_max_force, anchors, pos, mechanical_advantage, springKPerUnitLength, mover_weight
                     )
                 ),
@@ -446,8 +341,8 @@ def cost_sq_for_pos_samp(anchors, pos, motor_pos_samp, spool_buildup_factor, spo
     else:
         err = np.sum(
             pow(
-                distance_samples_relative_to_origin_no_fuzz(anchors, pos)
-                - motor_pos_samples_to_line_length_with_buildup_compensation(
+                distance_samples_relative_to_origin(anchors, pos)
+                - motor_pos_samples_to_distances_relative_to_origin(
                     motor_pos_samp, spool_buildup_factor, spool_r
                 ),
                 2,
@@ -466,11 +361,11 @@ def cost_sq_for_pos_samp_forward_transform(
     line_lengths_when_at_origin_err = np.linalg.norm(anchors, 2, 1) - line_lengths_when_at_origin
     line_length_samp = np.zeros((np.size(motor_pos_samp, 0), 3))
     if use_flex:
-        line_length_samp = motor_pos_samples_to_line_length_with_buildup_compensation(
+        line_length_samp = motor_pos_samples_to_distances_relative_to_origin(
             motor_pos_samp, spool_buildup_factor, spool_r
         ) + flex_distance(abc_axis_max_force, anchors, pos, mechanical_advantage, springKPerUnitLength, mover_weight)
     else:
-        line_length_samp = motor_pos_samples_to_line_length_with_buildup_compensation(
+        line_length_samp = motor_pos_samples_to_distances_relative_to_origin(
             motor_pos_samp, spool_buildup_factor, spool_r
         )
 
@@ -644,7 +539,7 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debu
     x_guess = (
         list(anchorsmatrix2vec(anchors_est))[0:params_anch]
         + list(posmatrix2vec(pos_est))
-        + spool_r_in_origin_first_guess
+        + list(spool_r_in_origin_first_guess)
         + [0, 0, 0]
     )
 
@@ -984,7 +879,7 @@ if __name__ == "__main__":
         else:
             pos = np.reshape([x for x in solution[params_anch : -(params_buildup + params_perturb)]], (u, 3))
         return cost_sq_for_pos_samp(
-            # return cost_sq_for_pos_samp_forward_transform(
+        #return cost_sq_for_pos_samp_forward_transform(
             anch,
             pos + solution[-params_perturb:],
             motor_pos_samp,

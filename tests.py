@@ -2,20 +2,22 @@
 
 from simulation import *
 
+
+
 class tester:
     "Hold some state that is common to several tests."
     anchors = symmetric_anchors(4000, 0, 0, 0)
-    pos = positions(3, 1000, 0)
+    pos = positions(3, 1000)
     spool_r = 75 * np.ones(4)
     gear_factor = 255./20.
     mech_adv = np.array([2, 2, 2, 4])
-    samp = distance_samples_relative_to_origin_no_fuzz(anchors, pos)
+    samp = distance_samples_relative_to_origin(anchors, pos)
     samp_in_degrees_without_buildup_comp = (
         gear_factor * mech_adv * samp * 360 / (2 * np.pi * spool_r)
     )
 
     def motor_pos_samples_with_defaults(self, spool_buildup_factor):
-        return motor_pos_samples_with_spool_buildup_compensation(
+        return pos_to_motor_pos_samples(
             self.anchors,
             self.pos,
             spool_buildup_factor,
@@ -105,6 +107,26 @@ class tester:
 
         return True
 
+    def test_distance_samples(self):
+        pos_local = np.r_[positions(2, 100), [[0, 0, 0,], [0, 0, 100]]]
+        dist_samp = distance_samples_relative_to_origin(self.anchors, pos_local)
+        if abs(np.linalg.norm(dist_samp[-2])) > 1e-4:
+            print("distance_samples_relative_to_origin seems broken 0")
+            return False
+        if dist_samp[-1][A] > 0:
+            print("distance_samples_relative_to_origin seems broken 1")
+            return False
+        if dist_samp[-1][B] > 0:
+            print("distance_samples_relative_to_origin seems broken 2")
+            return False
+        if dist_samp[-1][C] > 0:
+            print("distance_samples_relative_to_origin seems broken 3")
+            return False
+        if abs(dist_samp[-1][D] + 100) > 1e-4:
+            print("distance_samples_relative_to_origin seems broken 4")
+            return False
+
+
 def run():
     # Create tester objects
     testerObj = tester()
@@ -114,6 +136,7 @@ def run():
             testerObj.test_motor_pos_spool_buildup_compensation_sign,
             testerObj.test_samp_with_low_buildup_factor,
             testerObj.test_cost_sq_for_pos_samp_forward_transform,
+            testerObj.test_distance_samples,
         ]
     )
     # Run tests one by one and collect restults

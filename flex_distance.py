@@ -35,6 +35,9 @@ def flex_distance(abc_axis_max_force, anchors, pos, mechanical_advantage, spring
     ABC_forces_pre = np.ones(pos_w_origin.shape)
     ABC_forces_grav = np.ones(pos_w_origin.shape)
     try:
+        #sol = np.linalg.solve(ABC_matrices[:,np.newaxis], np.append(D_pre[:,np.newaxis], D_grav[:,np.newaxis], 1))
+        #ABC_forces_pre = sol[:,0]
+        #ABC_forces_grav = sol[:,1]
         ABC_forces_pre = np.linalg.solve(ABC_matrices, D_pre)
         ABC_forces_grav = np.linalg.solve(ABC_matrices, D_grav)
     except:

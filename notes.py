@@ -1,8 +1,8 @@
 import numpy as np
 from simulation import (
-    samples_relative_to_origin_no_fuzz,
-    motor_pos_samples_with_spool_buildup_compensation,
-    motor_pos_samples_to_line_length_with_buildup_compensation,
+    distance_samples_relative_to_origin,
+    pos_to_motor_pos_samples,
+    motor_pos_samples_to_distances_relative_to_origin,
 )
 
 # Approximate anchor placements in my office
@@ -46,7 +46,7 @@ def how_big_difference_will_static_buildup_compensation_make(
     spool_r,
     line_on_spool_when_at_the_origin,
 ):
-    samp = samples_relative_to_origin_no_fuzz(anchors, pos)
+    samp = distance_samples_relative_to_origin(anchors, pos)
     compensated_spool_r = spool_r + how_big_spool_r_difference_will_static_buildup_compensation_make(
         line_on_spool_when_at_the_origin, spool_buildup_factor, spool_r
     )
@@ -54,7 +54,7 @@ def how_big_difference_will_static_buildup_compensation_make(
     no_buildup_comp = mech_adv * samp * 360 / (2 * np.pi * spool_r)
     # Return the difference in mm actually travelled with these two alternatives
     return np.abs(
-        motor_pos_samples_to_line_length_with_buildup_compensation(
+        motor_pos_samples_to_distances_relative_to_origin(
             buildup_comp,
             spool_buildup_factor,
             compensated_spool_r,
@@ -63,7 +63,7 @@ def how_big_difference_will_static_buildup_compensation_make(
             np.array([1, 1, 1, 1]),
         )
     ) - np.abs(
-        motor_pos_samples_to_line_length_with_buildup_compensation(
+        motor_pos_samples_to_distances_relative_to_origin(
             no_buildup_comp,
             spool_buildup_factor,
             compensated_spool_r,
@@ -82,10 +82,10 @@ def buildup_compensation(
     spool_r_before_static_compensation,
     spool_r_after_static_compensation,
 ):
-    samp = samples_relative_to_origin_no_fuzz(anchors, pos)
+    samp = distance_samples_relative_to_origin(anchors, pos)
     no_buildup_comp = mech_adv * samp * 360 / (2 * np.pi * spool_r_before_static_compensation)
     # Gear ratio is always 1 since we're only considering spool rotations
-    buildup_comp = motor_pos_samples_with_spool_buildup_compensation(
+    buildup_comp = pos_to_motor_pos_samples(
         anchors,
         pos,
         spool_buildup_factor,
@@ -95,7 +95,7 @@ def buildup_compensation(
     )
     # Return the difference in mm actually travelled with these two alternatives
     return np.abs(
-        motor_pos_samples_to_line_length_with_buildup_compensation(
+        motor_pos_samples_to_distances_relative_to_origin(
             buildup_comp,
             spool_buildup_factor,
             spool_r_after_static_compensation,
@@ -104,7 +104,7 @@ def buildup_compensation(
             np.array([1, 1, 1, 1]),
         )
     ) - np.abs(
-        motor_pos_samples_to_line_length_with_buildup_compensation(
+        motor_pos_samples_to_distances_relative_to_origin(
             no_buildup_comp,
             spool_buildup_factor,
             spool_r_after_static_compensation,

@@ -16,7 +16,7 @@ how_many = 11
 pos = pos[:how_many]
 print("pos=\n", pos)
 radii = np.array([75.0, 75.0, 75.0, 75.0])
-samp = motor_pos_samples_with_spool_buildup_compensation(anchors, pos, constant_spool_buildup_factor, radii)
+samp = pos_to_motor_pos_samples(anchors, pos, constant_spool_buildup_factor, radii)
 line_lengths_origin = np.linalg.norm(anchors, 2, 1)
 solution = solve(samp, pos, line_lengths_origin, "SLSQP", True)
 
