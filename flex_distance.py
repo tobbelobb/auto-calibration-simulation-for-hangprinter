@@ -12,7 +12,7 @@ def unit_vectors_along_force(anch_to_pos, distances):
     return four_direction_vectors_for_each_position
 
 
-def forces_gravity_and_pretension(abc_axis_max_force, anch_to_pos, distances, mover_weight):
+def forces_gravity_and_pretension(abc_axis_max_force, abc_axis_target_force, anch_to_pos, distances, mover_weight):
     mg = 9.81 * mover_weight
 
     force_directions = unit_vectors_along_force(anch_to_pos, distances)
@@ -21,7 +21,7 @@ def forces_gravity_and_pretension(abc_axis_max_force, anch_to_pos, distances, mo
     ABC_matrices = force_directions[:, :, 0:3]
 
     # Scale the d-direction vectors by the target_force
-    D_pre = abc_axis_max_force * force_directions[:, :, 3]
+    D_pre = abc_axis_target_force * force_directions[:, :, 3]
     D_grav = np.c_[force_directions[:, :3, 3] * D_mg[:, np.newaxis]]
     grav = np.array([0, 0, -mg])
 
@@ -34,27 +34,51 @@ def forces_gravity_and_pretension(abc_axis_max_force, anch_to_pos, distances, mo
     except:
         pass
 
-    return [ABC_forces_pre, np.linalg.norm(D_pre, 2, 1), ABC_forces_grav, np.linalg.norm(D_grav, 2, 1)]
+    forces = [ABC_forces_pre, np.linalg.norm(D_pre, 2, 1), ABC_forces_grav, np.linalg.norm(D_grav, 2, 1)]
+
+    return forces
 
 
-def forces_gravity_and_pretension_scaled(abc_axis_max_force, anch_to_pos, distances, mover_weight):
+def forces_gravity_and_pretension_scaled(
+    abc_axis_max_force, abc_axis_target_force, anch_to_pos, distances, mover_weight
+):
 
     [ABC_forces_pre, D_forces_pre, ABC_forces_grav, D_forces_grav] = forces_gravity_and_pretension(
-        abc_axis_max_force, anch_to_pos, distances, mover_weight
+        abc_axis_max_force, abc_axis_target_force, anch_to_pos, distances, mover_weight
     )
 
     # Make ABC_axes pull with exactly max force, or less
-    scale_it = np.ones((np.size(anch_to_pos, 0), 1))
-    if (abs(ABC_forces_pre) > 0).all():
-        scale_it = np.min((abc_axis_max_force - ABC_forces_grav) / ABC_forces_pre, 1)[:, np.newaxis]
+    scale_it = np.min(
+        np.c_[
+            np.max(
+                abs(
+                    (abc_axis_target_force - np.c_[ABC_forces_grav, D_forces_grav])
+                    / np.c_[ABC_forces_pre, D_forces_pre]
+                ),
+                1,
+            ),
+            np.min(
+                abs((abc_axis_max_force - np.c_[ABC_forces_grav, D_forces_grav]) / np.c_[ABC_forces_pre, D_forces_pre]),
+                1,
+            ),
+        ],
+        1,
+    )
 
-    ABC_forces_pre = ABC_forces_pre * scale_it
-    D_forces_pre = D_forces_pre * scale_it[:, 0]
+    ABC_forces_pre = ABC_forces_pre * scale_it[:, np.newaxis]
+    D_forces_pre = D_forces_pre * scale_it
 
-    return np.c_[ABC_forces_pre + ABC_forces_grav, D_forces_pre + D_forces_grav]
+    forces = np.c_[ABC_forces_pre + ABC_forces_grav, D_forces_pre + D_forces_grav]
+    # forces = np.c_[ABC_forces_grav, D_forces_grav]
+    # forces = np.c_[ABC_forces_pre, D_forces_pre]
+    forces = np.clip(forces, 0, np.max(forces))
+
+    return forces
 
 
-def flex_distance(abc_axis_max_force, anchors, pos, mechanical_advantage, springKPerUnitLength, mover_weight):
+def flex_distance(
+    abc_axis_max_force, abc_axis_target_force, anchors, pos, mechanical_advantage, springKPerUnitLength, mover_weight
+):
     guyWireLengths = np.array(
         [
             np.linalg.norm(anchors[0] - anchors[3]),
@@ -69,7 +93,9 @@ def flex_distance(abc_axis_max_force, anchors, pos, mechanical_advantage, spring
     anch_to_pos = anchors - pos_w_origin[:, np.newaxis, :]
     distances = np.linalg.norm(anch_to_pos, 2, 2)
 
-    forces = forces_gravity_and_pretension_scaled(abc_axis_max_force, anch_to_pos, distances, mover_weight)
+    forces = forces_gravity_and_pretension_scaled(
+        abc_axis_max_force, abc_axis_target_force, anch_to_pos, distances, mover_weight
+    )
 
     springKs = springKPerUnitLength / (distances * mechanical_advantage + guyWireLengths)
     distances_with_relaxed_springs = distances - forces / (springKs * mechanical_advantage)

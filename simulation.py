@@ -25,15 +25,16 @@ mechanical_advantage = np.array([2.0, 2.0, 2.0, 4.0])
 lines_per_spool = np.array([1.0, 1.0, 1.0, 1.0])
 
 ## Line flex config
-abc_axis_max_force = 20
+use_flex = True  # Toggle the use of flex compensation in the algorithm
+abc_axis_min_force_limit = 8
+abc_axis_max_force_limit = 100
 springKPerUnitLength = 20000.0
 mover_weight = 1.0
-use_flex = True  # Toggle the use of flex compensation in the algorithm
 
 ## Algorithm help and tuning
+use_line_lengths_at_origin_data = False  # Toggle the enforcement of measured distances when at origin
 line_lengths_when_at_origin = np.array([1597, 1795, 1582.5, 2355])
 # line_lengths_when_at_origin = np.array([865, 870, 925, 1500])
-use_line_lengths_at_origin_data = True  # Toggle the enforcement of measured distances when at origin
 
 l_long = 14000.0  # The longest distance from the origin that we should consider for anchor positions
 l_short = 3000.0  # The longest distance from the origin that we should consider for data point collection
@@ -95,54 +96,14 @@ motor_pos_samp = np.array(
         # [1423.71, -3350.62, 3370.35, -732.41, ],
         # [-1251.09, 1017.12, 3377.25, -3084.71, ],
         # [1393.11, 567.08, 1066.05, -3625.16, ],
-        [
-            9568.20,
-            -1954.78,
-            -6728.08,
-            1.80,
-        ],
-        [
-            9679.44,
-            -9815.10,
-            2424.67,
-            1.39,
-        ],
-        [
-            1610.73,
-            2192.66,
-            5428.78,
-            -22385.79,
-        ],
-        [
-            8571.15,
-            2945.31,
-            -2174.37,
-            -22384.61,
-        ],
-        [
-            8610.92,
-            8887.24,
-            -3690.93,
-            -25555.04,
-        ],
-        [
-            8612.37,
-            -5273.09,
-            3779.56,
-            -16405.40,
-        ],
-        [
-            6864.52,
-            -4144.30,
-            -358.82,
-            -8330.11,
-        ],
-        [
-            1465.66,
-            2095.35,
-            -3899.67,
-            385.29,
-        ],
+        [9568.20, -1954.78, -6728.08, 1.80],
+        [9679.44, -9815.10, 2424.67, 1.39],
+        [1610.73, 2192.66, 5428.78, -22385.79],
+        [8571.15, 2945.31, -2174.37, -22384.61],
+        [8610.92, 8887.24, -3690.93, -25555.04],
+        [8612.37, -5273.09, 3779.56, -16405.40],
+        [6864.52, -4144.30, -358.82, -8330.11],
+        [1465.66, 2095.35, -3899.67, 385.29],
         # [-3602.33, 298.79, 5238.63, 576.91,  ],
         # [-3524.99, 5434.89, -1170.04, 734.34,  ],
         # [4091.48, 554.49, -5127.85, 731.61,  ],
@@ -313,7 +274,7 @@ def motor_pos_samples_to_distances_relative_to_origin(
 
 def cost_from_forces(anchors, pos, force_samps, mover_weight):
     [ABC_forces_pre, D_forces_pre, ABC_forces_grav, D_forces_grav] = forces_gravity_and_pretension(
-        abc_axis_max_force, anch_to_pos, distances, mover_weight
+        abc_axis_max_force, np.max(np.array([abc_axis_max_force - 1, 0])), anch_to_pos, distances, mover_weight
     )
 
     synthetic_forces_pre = np.c_[ABC_forces_pre, D_forces_pre]
@@ -329,7 +290,9 @@ def cost_from_forces(anchors, pos, force_samps, mover_weight):
     return np.sum(pow(synthetic_force_pre - force_samp_pre, 2))
 
 
-def cost_sq_for_pos_samp(anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r, line_lengths_when_at_origin):
+def cost_sq_for_pos_samp(
+    anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r, line_lengths_when_at_origin, abc_axis_max_force=1
+):
     """
     Sum of squares
 
@@ -348,7 +311,13 @@ def cost_sq_for_pos_samp(anchors, pos, motor_pos_samp, spool_buildup_factor, spo
                 - (
                     motor_pos_samples_to_distances_relative_to_origin(motor_pos_samp, spool_buildup_factor, spool_r)
                     + flex_distance(
-                        abc_axis_max_force, anchors, pos, mechanical_advantage, springKPerUnitLength, mover_weight
+                        abc_axis_max_force,
+                        np.max(np.array([abc_axis_max_force - 1, 0.0001])),
+                        anchors,
+                        pos,
+                        mechanical_advantage,
+                        springKPerUnitLength,
+                        mover_weight,
                     )
                 ),
                 2,
@@ -377,7 +346,15 @@ def cost_sq_for_pos_samp_forward_transform(
     if use_flex:
         line_length_samp = motor_pos_samples_to_distances_relative_to_origin(
             motor_pos_samp, spool_buildup_factor, spool_r
-        ) + flex_distance(abc_axis_max_force, anchors, pos, mechanical_advantage, springKPerUnitLength, mover_weight)
+        ) + flex_distance(
+            abc_axis_max_force,
+            np.max(np.array([abc_axis_max_force - 1, 0.0001])),
+            anchors,
+            pos,
+            mechanical_advantage,
+            springKPerUnitLength,
+            mover_weight,
+        )
     else:
         line_length_samp = motor_pos_samples_to_distances_relative_to_origin(
             motor_pos_samp, spool_buildup_factor, spool_r
@@ -395,11 +372,13 @@ def cost_sq_for_pos_samp_forward_transform(
 
 
 def cost_sq_for_pos_samp_combined(
-    anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r, line_lengths_when_at_origin
+    anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r, line_lengths_when_at_origin, abc_axis_max_force=1
 ):
     return 10 * cost_sq_for_pos_samp_forward_transform(
         anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r, line_lengths_when_at_origin
-    ) + cost_sq_for_pos_samp(anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r, line_lengths_when_at_origin)
+    ) + cost_sq_for_pos_samp(
+        anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r, line_lengths_when_at_origin, abc_axis_max_force
+    )
 
 
 def anchorsvec2matrix(anchorsvec):
@@ -417,20 +396,7 @@ def anchorsvec2matrix(anchorsvec):
 
 
 def anchorsmatrix2vec(a):
-    return [
-        a[A, X],
-        a[A, Y],
-        a[A, Z],
-        a[B, X],
-        a[B, Y],
-        a[B, Z],
-        a[C, X],
-        a[C, Y],
-        a[C, Z],
-        a[D, X],
-        a[D, Y],
-        a[D, Z],
-    ]
+    return [a[A, X], a[A, Y], a[A, Z], a[B, X], a[B, Y], a[B, Z], a[C, X], a[C, Y], a[C, Z], a[D, X], a[D, Y], a[D, Z]]
 
 
 def posvec2matrix(v, u):
@@ -442,10 +408,7 @@ def posmatrix2vec(m):
 
 
 def pre_list(l, num):
-    return np.append(
-        np.append(l[0:params_anch], l[params_anch : params_anch + 3 * num]),
-        l[-params_buildup:],
-    )
+    return np.append(np.append(l[0:params_anch], l[params_anch : params_anch + 3 * num]), l[-params_buildup:])
 
 
 def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debug=False):
@@ -464,9 +427,19 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debu
 
     u = np.shape(motor_pos_samp)[0]
     ux = np.shape(xyz_of_samp)[0]
-    number_of_params_pos = 3 * (u - ux) + 3
+    number_of_params_pos = 3 * (u - ux)
 
-    def costx(_cost, posvec, anchvec, spool_buildup_factor, spool_r, u, line_lengths_when_at_origin, perturb):
+    def costx(
+        _cost,
+        posvec,
+        anchvec,
+        spool_buildup_factor,
+        spool_r,
+        u,
+        line_lengths_when_at_origin,
+        perturb,
+        abc_axis_max_force=1.0,
+    ):
         """Identical to cost, except the shape of inputs and capture of samp, xyz_of_samp, ux, and u
 
         Parameters
@@ -496,6 +469,7 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debu
             spool_buildup_factor,
             spool_r,
             line_lengths_when_at_origin,
+            abc_axis_max_force,
         )
 
     # Limits of anchor positions:
@@ -523,6 +497,9 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debu
         ]
         + [-xyz_offset_max, -xyz_offset_max, -xyz_offset_max]
     )
+    if use_flex:
+        lb = np.append(lb, abc_axis_min_force_limit)
+
     ub = np.array(
         [
             l_long,  # A_ax < x
@@ -547,6 +524,8 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debu
         ]
         + [xyz_offset_max, xyz_offset_max, xyz_offset_max]
     )
+    if use_flex:
+        ub = np.append(ub, abc_axis_max_force_limit)
 
     pos_est = np.zeros((u - ux, 3))  # The positions we need to estimate
     anchors_est = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
@@ -556,6 +535,8 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debu
         + list(spool_r_in_origin_first_guess)
         + [0, 0, 0]
     )
+    if use_flex:
+        x_guess += [10.0]
 
     disp = False
     if debug:
@@ -569,7 +550,7 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debu
         from mystic.strategy import Best1Exp, Best1Bin
 
         stop = Or(VTR(1e-12), ChangeOverGeneration(0.0000001, 5000))
-        ndim = number_of_params_pos + params_anch + params_buildup
+        ndim = number_of_params_pos + params_anch + params_buildup + params_perturb + use_flex
         npop = 3
         stepmon = VerboseMonitor(100)
         if not disp:
@@ -580,20 +561,37 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debu
         solver.SetStrictRanges(lb, ub)
         solver.SetGenerationMonitor(stepmon)
         solver.enable_signal_handler()  # Handle Ctrl+C gracefully. Be restartable
-        solver.Solve(
-            lambda x: costx(
-                cost_sq_for_pos_samp,
-                x[params_anch : -(params_buildup + params_perturb)],
-                x[0:params_anch],
-                constant_spool_buildup_factor,
-                x[-(params_buildup + params_perturb) : -params_perturb],
-                u,
-                line_lengths_when_at_origin,
-                x[-params_perturb:],
-            ),
-            termination=stop,
-            strategy=Best1Bin,
-        )
+        if use_flex:
+            solver.Solve(
+                lambda x: costx(
+                    cost_sq_for_pos_samp,
+                    x[params_anch : -(params_buildup + params_perturb + 1)],
+                    x[0:params_anch],
+                    constant_spool_buildup_factor,
+                    x[-(params_buildup + params_perturb + 1) : -(params_perturb + 1)],
+                    u,
+                    line_lengths_when_at_origin,
+                    x[-(params_perturb + 1) : -1],
+                    x[-1],
+                ),
+                termination=stop,
+                strategy=Best1Bin,
+            )
+        else:
+            solver.Solve(
+                lambda x: costx(
+                    cost_sq_for_pos_samp,
+                    x[params_anch : -(params_buildup + params_perturb)],
+                    x[0:params_anch],
+                    constant_spool_buildup_factor,
+                    x[-(params_buildup + params_perturb) : -params_perturb],
+                    u,
+                    line_lengths_when_at_origin,
+                    x[-params_perturb:],
+                ),
+                termination=stop,
+                strategy=Best1Bin,
+            )
 
         # use monitor to retrieve results information
         iterations = len(stepmon)
@@ -612,7 +610,7 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debu
         from mystic.monitors import VerboseMonitor, Monitor
         from mystic.termination import VTR, And, Or
 
-        ndim = number_of_params_pos + params_anch + params_buildup
+        ndim = number_of_params_pos + params_anch + params_buildup + params_perturb + use_flex
         killer = GracefulKiller()
         best_cost = 9999999999999.9
         i = 0
@@ -631,18 +629,33 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debu
             solver.SetGenerationMonitor(VerboseMonitor(5))
             if not disp:
                 solver.SetGenerationMonitor(Monitor())
-            solver.Solve(
-                lambda x: costx(
-                    cost_sq_for_pos_samp,
-                    x[params_anch : -(params_buildup + params_perturb)],
-                    x[0:params_anch],
-                    constant_spool_buildup_factor,
-                    x[-(params_buildup + params_perturb) : -params_perturb],
-                    u,
-                    line_lengths_when_at_origin,
-                    x[-params_perturb:],
+            if use_flex:
+                solver.Solve(
+                    lambda x: costx(
+                        cost_sq_for_pos_samp,
+                        x[params_anch : -(params_buildup + params_perturb + 1)],
+                        x[0:params_anch],
+                        constant_spool_buildup_factor,
+                        x[-(params_buildup + params_perturb + 1) : -(params_perturb + 1)],
+                        u,
+                        line_lengths_when_at_origin,
+                        x[-(params_perturb + 1) : -1],
+                        x[-1],
+                    )
                 )
-            )
+            else:
+                solver.Solve(
+                    lambda x: costx(
+                        cost_sq_for_pos_samp,
+                        x[params_anch : -(params_buildup + params_perturb)],
+                        x[0:params_anch],
+                        constant_spool_buildup_factor,
+                        x[-(params_buildup + params_perturb) : -(params_perturb)],
+                        u,
+                        line_lengths_when_at_origin,
+                        x[-params_perturb:],
+                    )
+                )
             if solver.bestEnergy < best_cost:
                 if disp:
                     print("New best x: ")
@@ -670,24 +683,45 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debu
             if killer.kill_now:
                 break
             random_guess = np.array([b[0] + (b[1] - b[0]) * np.random.rand() for b in list(zip(lb, ub))])
-            sol = scipy.optimize.minimize(
-                lambda x: costx(
-                    cost_sq_for_pos_samp,
-                    # cost_sq_for_pos_samp_forward_transform,
-                    # cost_sq_for_pos_samp_combined,
-                    x[params_anch : -(params_buildup + params_perturb)],
-                    x[0:params_anch],
-                    constant_spool_buildup_factor,
-                    x[-(params_buildup + params_perturb) : -params_perturb],
-                    u,
-                    line_lengths_when_at_origin,
-                    x[-params_perturb:],
-                ),
-                random_guess,
-                method="SLSQP",
-                bounds=list(zip(lb, ub)),
-                options={"disp": disp, "ftol": 1e-20, "maxiter": 500},
-            )
+            if use_flex:
+                sol = scipy.optimize.minimize(
+                    lambda x: costx(
+                        cost_sq_for_pos_samp,
+                        # cost_sq_for_pos_samp_forward_transform,
+                        # cost_sq_for_pos_samp_combined,
+                        x[params_anch : -(params_buildup + params_perturb + 1)],
+                        x[0:params_anch],
+                        constant_spool_buildup_factor,
+                        x[-(params_buildup + params_perturb + 1) : -(params_perturb + 1)],
+                        u,
+                        line_lengths_when_at_origin,
+                        x[-(params_perturb + 1) : -1],
+                        x[-1],
+                    ),
+                    random_guess,
+                    method="SLSQP",
+                    bounds=list(zip(lb, ub)),
+                    options={"disp": disp, "ftol": 1e-9, "maxiter": 500},
+                )
+            else:
+                sol = scipy.optimize.minimize(
+                    lambda x: costx(
+                        cost_sq_for_pos_samp,
+                        # cost_sq_for_pos_samp_forward_transform,
+                        # cost_sq_for_pos_samp_combined,
+                        x[params_anch : -(params_buildup + params_perturb)],
+                        x[0:params_anch],
+                        constant_spool_buildup_factor,
+                        x[-(params_buildup + params_perturb) : -(params_perturb)],
+                        u,
+                        line_lengths_when_at_origin,
+                        x[-(params_perturb):],
+                    ),
+                    random_guess,
+                    method="SLSQP",
+                    bounds=list(zip(lb, ub)),
+                    options={"disp": disp, "ftol": 1e-9, "maxiter": 500},
+                )
             if sol.fun < best_cost:
                 if disp:
                     print("New best x: ")
@@ -701,22 +735,41 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debu
 
     elif method == "L-BFGS-B":
         print("You can not interrupt this solver without losing the solution.")
-        best_x = scipy.optimize.minimize(
-            lambda x: costx(
-                cost_sq_for_pos_samp,
-                x[params_anch : -(params_buildup + params_perturb)],
-                x[0:params_anch],
-                constant_spool_buildup_factor,
-                x[-(params_buildup + params_perturb) : -params_perturb],
-                u,
-                line_lengths_when_at_origin,
-                x[-params_perturb:],
-            ),
-            x_guess,
-            method="L-BFGS-B",
-            bounds=list(zip(lb, ub)),
-            options={"disp": disp, "ftol": 1e-12, "gtol": 1e-12, "maxiter": 50000, "maxfun": 1000000},
-        ).x
+        if use_flex:
+            best_x = scipy.optimize.minimize(
+                lambda x: costx(
+                    cost_sq_for_pos_samp,
+                    x[params_anch : -(params_buildup + params_perturb + 1)],
+                    x[0:params_anch],
+                    constant_spool_buildup_factor,
+                    x[-(params_buildup + params_perturb + 1) : -(params_perturb + 1)],
+                    u,
+                    line_lengths_when_at_origin,
+                    x[-(params_perturb + 1) : -1],
+                    x[-1],
+                ),
+                x_guess,
+                method="L-BFGS-B",
+                bounds=list(zip(lb, ub)),
+                options={"disp": disp, "ftol": 1e-9, "gtol": 1e-12, "maxiter": 50000, "maxfun": 1000000},
+            ).x
+        else:
+            best_x = scipy.optimize.minimize(
+                lambda x: costx(
+                    cost_sq_for_pos_samp,
+                    x[params_anch : -(params_buildup + params_perturb)],
+                    x[0:params_anch],
+                    constant_spool_buildup_factor,
+                    x[-(params_buildup + params_perturb) : -(params_perturb)],
+                    u,
+                    line_lengths_when_at_origin,
+                    x[-(params_perturb):],
+                ),
+                x_guess,
+                method="L-BFGS-B",
+                bounds=list(zip(lb, ub)),
+                options={"disp": disp, "ftol": 1e-12, "gtol": 1e-12, "maxiter": 50000, "maxfun": 1000000},
+            ).x
         if not type(best_x[0]) == float:
             best_x = np.array([float(pos) for pos in best_x])
         return best_x
@@ -881,28 +934,44 @@ if __name__ == "__main__":
         anch = np.zeros((4, 3))
         anch = anchorsvec2matrix(solution[0:params_anch])
         spool_buildup_factor = constant_spool_buildup_factor
-        spool_r = np.array([x for x in solution[-(params_buildup + params_perturb) : -params_perturb]])
+        spool_r = np.array(
+            [x for x in solution[-(params_buildup + params_perturb + use_flex) : -(params_perturb + use_flex)]]
+        )
+        line_max_force = solution[-use_flex]  # This actually works
         pos = np.zeros((u, 3))
         if np.size(xyz_of_samp) != 0:
             pos = np.vstack(
                 (
                     xyz_of_samp,
-                    np.reshape(solution[params_anch : -(params_buildup + params_perturb)], (u - ux, 3)),
+                    np.reshape(solution[params_anch : -(params_buildup + params_perturb + use_flex)], (u - ux, 3)),
                 )
             )
         else:
-            pos = np.reshape([x for x in solution[params_anch : -(params_buildup + params_perturb)]], (u, 3))
-        return cost_sq_for_pos_samp(
-            # return cost_sq_for_pos_samp_forward_transform(
-            anch,
-            pos + solution[-params_perturb:],
-            motor_pos_samp,
-            constant_spool_buildup_factor,
-            spool_r,
-            line_lengths_when_at_origin,
-        )
+            pos = np.reshape([x for x in solution[params_anch : -(params_buildup + params_perturb + use_flex)]], (u, 3))
+        if use_flex:
+            return cost_sq_for_pos_samp(
+                # return cost_sq_for_pos_samp_forward_transform(
+                anch,
+                pos + solution[-(params_perturb + 1) : -1],
+                motor_pos_samp,
+                constant_spool_buildup_factor,
+                spool_r,
+                line_lengths_when_at_origin,
+                line_max_force,
+            )
+        else:
+            return cost_sq_for_pos_samp(
+                # return cost_sq_for_pos_samp_forward_transform(
+                anch,
+                pos + solution[-params_perturb:],
+                motor_pos_samp,
+                constant_spool_buildup_factor,
+                spool_r,
+                line_lengths_when_at_origin,
+                line_max_force,
+            )
 
-    ndim = 3 * (u - ux) + params_anch + params_buildup + params_perturb
+    ndim = 3 * (u - ux) + params_anch + params_buildup + params_perturb + use_flex
 
     class candidate:
         name = "no_name"
@@ -912,6 +981,7 @@ if __name__ == "__main__":
         cost = 9999.9
         pos = np.zeros(3 * (u - ux))
         xyz_offset = np.zeros(3)
+        line_max_force = 0.0
 
         def __init__(self, name, solution):
             self.name = name
@@ -924,32 +994,34 @@ if __name__ == "__main__":
                 np.set_printoptions(suppress=True)
                 self.anch = anchorsvec2matrix(self.solution[0:params_anch])
                 self.spool_buildup_factor = constant_spool_buildup_factor  # self.solution[-params_buildup]
-                self.spool_r = self.solution[-(params_buildup + params_perturb) : -params_perturb]
+                self.spool_r = self.solution[
+                    -(params_buildup + params_perturb + use_flex) : -(params_perturb + use_flex)
+                ]
                 if np.size(xyz_of_samp) != 0:
                     self.pos = np.vstack(
                         (
                             xyz_of_samp,
-                            np.reshape(solution[params_anch : -(params_buildup + params_perturb)], (u - ux, 3)),
+                            np.reshape(
+                                solution[params_anch : -(params_buildup + params_perturb + use_flex)], (u - ux, 3)
+                            ),
                         )
                     )
                 else:
-                    self.pos = np.reshape(solution[params_anch : -(params_buildup + params_perturb)], (u, 3))
-                self.xyz_offset = solution[-params_perturb:]
+                    self.pos = np.reshape(solution[params_anch : -(params_buildup + params_perturb + use_flex)], (u, 3))
+                if use_flex:
+                    self.xyz_offset = solution[-(params_perturb + 1) : -1]
+                    self.line_max_force = solution[-1]
+                else:
+                    self.xyz_offset = solution[-params_perturb:]
 
     the_cand = candidate("no_name", np.zeros(ndim))
     st1 = timeit.default_timer()
     if args["method"] == "all":
         cands = [
             candidate(
-                cand_name,
-                solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, cand_name, args["debug"]),
+                cand_name, solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, cand_name, args["debug"])
             )
-            for cand_name in [
-                "SLSQP",
-                "PowellDirectionalSolver",
-                "L-BFGS-B",
-                "differentialEvolutionSolver",
-            ]
+            for cand_name in ["SLSQP", "PowellDirectionalSolver", "L-BFGS-B", "differentialEvolutionSolver"]
         ]
         cands[:] = sorted(cands, key=lambda cand: cand.cost)
         print("Winner method: is %s" % cands[0].name)
@@ -1004,8 +1076,10 @@ if __name__ == "__main__":
         print("Spool buildup factor:", the_cand.spool_buildup_factor)  # err
         print("Spool radii:", the_cand.spool_r)
         print("XYZ offset: ", the_cand.xyz_offset)
-        print_anch_err(the_cand.anch, anchors)
-        print("Method: %s" % args["method"])
+        if use_flex:
+            print("line_max_force: %s" % the_cand.line_max_force)
+        # print_anch_err(the_cand.anch, anchors)
+        # print("Method: %s" % args["method"])
         print("RUN TIME : {0}".format(st2 - st1))
         np.set_printoptions(precision=6)
         np.set_printoptions(suppress=True)  # No scientific notation
@@ -1013,10 +1087,10 @@ if __name__ == "__main__":
         print(the_cand.pos)
         L_errs = np.linalg.norm(the_cand.anch, 2, 1) - line_lengths_when_at_origin
         print("Line length errors:")
-        print("ELa=%.2f" % (L_errs[0]))
-        print("ELb=%.2f" % (L_errs[1]))
-        print("ELc=%.2f" % (L_errs[2]))
-        print("ELd=%.2f" % (L_errs[3]))
+        print("line_length_error_a=%.2f" % (L_errs[0]))
+        print("line_length_error_b=%.2f" % (L_errs[1]))
+        print("line_length_error_c=%.2f" % (L_errs[2]))
+        print("line_length_error_d=%.2f" % (L_errs[3]))
         print("Tot line length err=%.2f" % (np.linalg.norm(L_errs)))
         # example_data_pos = np.array(
         #    [
