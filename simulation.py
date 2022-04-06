@@ -17,7 +17,7 @@ from flex_distance import *
 
 # Config values should be based on HP4 defaults
 ## Spool buildup
-constant_spool_buildup_factor = 0.08  # Qualified first guess for 1.1 mm line
+constant_spool_buildup_factor = 0.11  # Qualified first guess for 1.1 mm line
 spool_r_in_origin_first_guess = np.array([75.0, 75.0, 75.0, 75.0])
 spool_gear_teeth = 255
 motor_gear_teeth = 20
@@ -26,7 +26,7 @@ lines_per_spool = np.array([1.0, 1.0, 1.0, 1.0])
 
 ## Line flex config
 use_flex = True  # Toggle the use of flex compensation in the algorithm
-abc_axis_min_force_limit = 8
+abc_axis_min_force_limit = 1
 abc_axis_max_force_limit = 100
 springKPerUnitLength = 20000.0
 mover_weight = 1.0
@@ -310,7 +310,7 @@ def cost_sq_for_pos_samp(
                 distance_samples_relative_to_origin(anchors, pos)
                 - (
                     motor_pos_samples_to_distances_relative_to_origin(motor_pos_samp, spool_buildup_factor, spool_r)
-                    + flex_distance(
+                    - flex_distance(
                         abc_axis_max_force,
                         np.max(np.array([abc_axis_max_force - 1, 0.0001])),
                         anchors,
@@ -339,14 +339,14 @@ def cost_sq_for_pos_samp(
 
 
 def cost_sq_for_pos_samp_forward_transform(
-    anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r, line_lengths_when_at_origin
+    anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r, line_lengths_when_at_origin, abc_axis_max_force=1
 ):
     line_lengths_when_at_origin_err = np.linalg.norm(anchors, 2, 1) - line_lengths_when_at_origin
     line_length_samp = np.zeros((np.size(motor_pos_samp, 0), 3))
     if use_flex:
         line_length_samp = motor_pos_samples_to_distances_relative_to_origin(
             motor_pos_samp, spool_buildup_factor, spool_r
-        ) + flex_distance(
+        ) - flex_distance(
             abc_axis_max_force,
             np.max(np.array([abc_axis_max_force - 1, 0.0001])),
             anchors,
@@ -375,7 +375,7 @@ def cost_sq_for_pos_samp_combined(
     anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r, line_lengths_when_at_origin, abc_axis_max_force=1
 ):
     return 10 * cost_sq_for_pos_samp_forward_transform(
-        anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r, line_lengths_when_at_origin
+        anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r, line_lengths_when_at_origin, abc_axis_max_force
     ) + cost_sq_for_pos_samp(
         anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r, line_lengths_when_at_origin, abc_axis_max_force
     )
@@ -949,8 +949,8 @@ if __name__ == "__main__":
         else:
             pos = np.reshape([x for x in solution[params_anch : -(params_buildup + params_perturb + use_flex)]], (u, 3))
         if use_flex:
+            # return cost_sq_for_pos_samp_forward_transform(
             return cost_sq_for_pos_samp(
-                # return cost_sq_for_pos_samp_forward_transform(
                 anch,
                 pos + solution[-(params_perturb + 1) : -1],
                 motor_pos_samp,
@@ -960,8 +960,8 @@ if __name__ == "__main__":
                 line_max_force,
             )
         else:
+            # return cost_sq_for_pos_samp_forward_transform(
             return cost_sq_for_pos_samp(
-                # return cost_sq_for_pos_samp_forward_transform(
                 anch,
                 pos + solution[-params_perturb:],
                 motor_pos_samp,
