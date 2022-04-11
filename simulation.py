@@ -27,7 +27,7 @@ lines_per_spool = np.array([1.0, 1.0, 1.0, 1.0])
 ## Line flex config
 use_flex = True  # Toggle the use of flex compensation in the algorithm
 abc_axis_min_force_limit = 1
-abc_axis_max_force_limit = 40
+abc_axis_max_force_limit = 50
 springKPerUnitLength = 20000.0
 mover_weight = 2.0
 
@@ -45,7 +45,6 @@ xyz_offset_max = (
 
 # Force series 1
 #xyz_of_samp = np.array([
-#[0.297172, -0.308679, 0.883526],
 #[-38.5647, -176.003, 236.993],
 #[-298.255, -9.98837, 342.329],
 #[-83.2404, 258.189, 455.359],
@@ -56,9 +55,8 @@ xyz_offset_max = (
 #[-134.534, -131.948, 985.426],
 #[-51.9005, -9.99981, 1201.16],
 #])
-
+#
 #motor_pos_samp = np.array([
-#[-0.09, -0.04, 0.00, 0.03,  ],
 #[-2602.44, 3562.17, 1847.54, -8868.56,  ],
 #[1537.21, 5536.80, -3314.36, -12109.18,  ],
 #[6637.32, 61.05, -1210.78, -16838.98,  ],
@@ -114,9 +112,9 @@ xyz_of_samp = np.array(
         [-198.748, 63.0038, 1.22],
         ## Using bed probe for Z-measurements
         [198.64, -198.88, 0],
-        [-199.06, -199.93, -0.579], #0],
-        [-199.85, 200.87, -0.521], #0],
-        [200.67, 200.46, -0.294], #0],
+        [-199.06, -199.93, 0],
+        [-199.85, 200.87, 0],
+        [200.67, 200.46, 0],
     ]
 )
 
@@ -174,6 +172,7 @@ motor_pos_samp = np.array(
          [2397.58, -335.64, 5499.65, -18922.93,  ],
          [3723.43, 8847.10, 8508.66, -37724.91,  ],
          [3778.36, 9895.85, 7309.68, -37514.10,  ],
+
     ]
 )
 
@@ -198,7 +197,7 @@ X = 0
 Y = 1
 Z = 2
 params_anch = 12
-params_buildup = 4  # four spool radii, one spool buildup factor
+params_buildup = 2
 params_perturb = 3
 A_bx = 3
 A_cx = 6
@@ -497,6 +496,7 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debu
             posvec = np.array([pos for pos in posvec])
         anchvec = np.array([anch for anch in anchvec])
         spool_r = np.array([r for r in spool_r])
+        spool_r = np.r_[spool_r[0], spool_r[0], spool_r]
         perturb = np.array([p for p in perturb])
 
         anchors = anchorsvec2matrix(anchvec)
@@ -537,8 +537,6 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debu
         + [
             spool_r_in_origin_first_guess[0] - 1.0,
             spool_r_in_origin_first_guess[1] - 1.0,
-            spool_r_in_origin_first_guess[2] - 1.0,
-            spool_r_in_origin_first_guess[3] - 1.0,
         ]
         + [-xyz_offset_max, -xyz_offset_max, -xyz_offset_max]
     )
@@ -564,8 +562,6 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debu
         + [
             spool_r_in_origin_first_guess[0] + 5.0,
             spool_r_in_origin_first_guess[1] + 5.0,
-            spool_r_in_origin_first_guess[2] + 5.0,
-            spool_r_in_origin_first_guess[3] + 5.0,
         ]
         + [xyz_offset_max, xyz_offset_max, xyz_offset_max]
     )
@@ -724,7 +720,7 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debu
         print("Hit Ctrl+C and wait a bit to stop solver and get current best solution.")
         for i in range(8):
             if disp:
-                print("Try: %d/8" % i)
+                print("Try: %d/8" % (i + 1))
             if killer.kill_now:
                 break
             random_guess = np.array([b[0] + (b[1] - b[0]) * np.random.rand() for b in list(zip(lb, ub))])
@@ -826,7 +822,7 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debu
 
 def print_copypasteable(anch, spool_buildup_factor, spool_r):
     print(
-        "\nM669 A%.2f:%.2f:%.2f B%.2f:%.2f:%.2f C%.2f:%.2f:%.2f D%.2f:%.2f:%.2f\nM666 Q%.6f R%.3f:%.3f:%.3f:%.3f\n"
+        "\nM669 A%.2f:%.2f:%.2f B%.2f:%.2f:%.2f C%.2f:%.2f:%.2f D%.2f:%.2f:%.2f\nM666 Q%.6f R%.3f:%.3f:%.3f:%.3f W%.3f S%.2f\n"
         % (
             anch[A, X],
             anch[A, Y],
@@ -845,6 +841,8 @@ def print_copypasteable(anch, spool_buildup_factor, spool_r):
             spool_r[B],
             spool_r[C],
             spool_r[D],
+            mover_weight,
+            springKPerUnitLength,
         )
     )
 
@@ -982,6 +980,8 @@ if __name__ == "__main__":
         spool_r = np.array(
             [x for x in solution[-(params_buildup + params_perturb + use_flex) : -(params_perturb + use_flex)]]
         )
+        spool_r = np.r_[spool_r[0], spool_r[0], spool_r]
+
         line_max_force = solution[-use_flex]  # This actually works
         pos = np.zeros((u, 3))
         if np.size(xyz_of_samp) != 0:
@@ -1042,6 +1042,7 @@ if __name__ == "__main__":
                 self.spool_r = self.solution[
                     -(params_buildup + params_perturb + use_flex) : -(params_perturb + use_flex)
                 ]
+                self.spool_r = np.r_[self.spool_r[0], self.spool_r[0], self.spool_r]
                 if np.size(xyz_of_samp) != 0:
                     self.pos = np.vstack(
                         (
