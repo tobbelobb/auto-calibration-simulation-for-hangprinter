@@ -58,7 +58,7 @@ def forces_gravity_and_pretension_scaled(
                 1,
             ),
             np.min(
-                abs((abc_axis_max_force - np.c_[ABC_forces_grav, D_forces_grav]) / np.c_[ABC_forces_pre, D_forces_pre]),
+                np.abs((abc_axis_max_force - np.c_[ABC_forces_grav, D_forces_grav]) / np.c_[ABC_forces_pre, D_forces_pre]),
                 1,
             ),
         ],
