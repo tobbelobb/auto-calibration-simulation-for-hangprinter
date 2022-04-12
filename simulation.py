@@ -827,7 +827,7 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debu
 
 def print_copypasteable(anch, spool_buildup_factor, spool_r):
     print(
-        "\nM669 A%.2f:%.2f:%.2f B%.2f:%.2f:%.2f C%.2f:%.2f:%.2f D%.2f:%.2f:%.2f\nM666 Q%.6f R%.3f:%.3f:%.3f:%.3f W%.3f S%.2f\n"
+            "\nM669 A%.2f:%.2f:%.2f B%.2f:%.2f:%.2f C%.2f:%.2f:%.2f D%.2f:%.2f:%.2f\nM666 R%.3f:%.3f:%.3f:%.3f\n;Here follows constants that are set in the script\nM666 Q%.6f W%.2f S%.2f U%d:%d:%d:%d O%d:%d:%d:%d L%d:%d:%d:%d H%d:%d:%d:%d"
         % (
             anch[A, X],
             anch[A, Y],
@@ -841,13 +841,29 @@ def print_copypasteable(anch, spool_buildup_factor, spool_r):
             anch[D, X],
             anch[D, Y],
             anch[D, Z],
-            spool_buildup_factor,
             spool_r[A],
             spool_r[B],
             spool_r[C],
             spool_r[D],
+            spool_buildup_factor,
             mover_weight,
             springKPerUnitLength,
+            mechanical_advantage[A],
+            mechanical_advantage[B],
+            mechanical_advantage[C],
+            mechanical_advantage[D],
+            lines_per_spool[A],
+            lines_per_spool[B],
+            lines_per_spool[C],
+            lines_per_spool[D],
+            motor_gear_teeth,
+            motor_gear_teeth,
+            motor_gear_teeth,
+            motor_gear_teeth,
+            spool_gear_teeth,
+            spool_gear_teeth,
+            spool_gear_teeth,
+            spool_gear_teeth,
         )
     )
 
