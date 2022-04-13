@@ -17,7 +17,7 @@ from flex_distance import *
 
 # Config values should be based on HP4 defaults
 ## Spool buildup
-constant_spool_buildup_factor = 0.006875*2  # Qualified first guess for 1.1 mm line
+constant_spool_buildup_factor = 0.006875 * 10  # Qualified first guess for 1.1 mm line
 spool_r_in_origin_first_guess = np.array([75.0, 75.0, 75.0, 75.0])
 spool_gear_teeth = 255
 motor_gear_teeth = 20
@@ -25,14 +25,18 @@ mechanical_advantage = np.array([2.0, 2.0, 2.0, 4.0])
 lines_per_spool = np.array([1.0, 1.0, 1.0, 1.0])
 
 ## Line flex config
-use_flex = True  # Toggle the use of flex compensation in the algorithm
-abc_axis_min_force_limit = 10
-abc_axis_max_force_limit = 50
+use_flex_errors = False
+use_rotational_errors = False
+use_flex_in_rotational_errors = False
+use_line_lengths_at_origin_data = False
+use_forces = False
+
+abc_axis_min_force_limit = 8
+abc_axis_max_force_limit = 140
 springKPerUnitLength = 20000.0
 mover_weight = 2.0
 
 ## Algorithm help and tuning
-use_line_lengths_at_origin_data = False  # Toggle the enforcement of measured distances when at origin
 line_lengths_when_at_origin = np.array([1597, 1795, 1582.5, 2355])
 # line_lengths_when_at_origin = np.array([865, 870, 925, 1500])
 
@@ -44,142 +48,117 @@ xyz_offset_max = (
 )
 
 # Force series 2. The enormous data set
-xyz_of_samp = np.array([
-[-0.527094, -0.634946, 0],#-0.370821],
-[-266.144, -284.39,0],# 5.48368],
-[240.691, -273.008,0],# 1.84387],
-[283.932, 7.41853, 0],#-0.878299],
-[304.608, 435.201,0],# 0.00422374],
-[-177.608, 438.733,0],# -1.03731],
-[-369.145, 45.972,0],# 3.83473],
-[-198.326, 25.0843,0],# 1.23042],
-[-465.56, -47.6696, 148.958],
-[-632.978, 330.731, 123.941],
-[-703.697, 410.585, 53.9513],
-[-277.863, 522.619, 36.4518],
-[443.706, 670.927, 121.135],
-[465.545, 131.309, 197.025],
-[38.9178, -623.777, 137.685],
-[-343.296, -331.299, 175.893],
-[-419.43, 25.5785, 243.119],
-[-684.896, 395.692, 186.824],
-[-287.429, 587.691, 297.107],
-[476.717, 650.558, 205.9],
-[307.146, 275.748, 231.131],
-[43.8489, -415.35, 318.255],
-[-28.077, -777.228, 241.797],
-[-339.945, -219.036, 269.015],
-[-642.961, 364.091, 321.117],
-[-340.953, 389.898, 413.864],
-[75.86, 545.978, 511.986],
-[510.734, 641.667, 514.656],
-[238.593, -33.943, 528.039],
-[-8.68617, -660.259, 526.475],
-[-307.971, -177.118, 588.672],
-[-506.395, 298.312, 602.812],
-[-59.6972, 35.2041, 611.094],
-[28.0547, 457.294, 667.879],
-[308.339, 471.581, 815.545],
-[189.286, -72.3184, 806.111],
-[-23.5655, -517.217, 886.333],
-[-275.386, -30.794, 959.031],
-[-62.4441, 278.419, 954.677],
-[-29.8298, 147.913, 1155.45],
-[62.8474, -55.7797, 1388.51],
-])
+xyz_of_samp = np.array(
+    [
+        [-0.527094, -0.634946, 0],#-0.370821],
+        [-266.144, -284.39, 0],#5.48368],
+        [240.691, -273.008, 0],#1.84387],
+        [283.932, 7.41853, 0],#-0.878299],
+        [304.608, 435.201, 0],#0.00422374],
+        [-177.608, 438.733, 0],#-1.03731],
+        [-369.145, 45.972, 0],#3.83473],
+        [-198.326, 25.0843, 0],#1.23042],
+        [62.8474, -55.7797, 1388.51],
+    ]
+)
 
-motor_pos_samp = np.array([
-[0.00, -0.07, 0.00, 0.00,  ],
-[-4834.89, 7431.31, -1079.36, 1309.72,  ],
-[-4836.05, 953.66, 6659.45, 970.36,  ],
-[564.76, -3822.39, 4905.07, 512.16,  ],
-[8813.47, -9838.24, 2856.02, 2158.20,  ],
-[8634.09, -2206.69, -6170.42, 1894.75,  ],
-[1763.93, 4885.85, -6499.04, 1229.59,  ],
-[765.49, 2519.79, -3528.48, 379.65,  ],
-[834.06, 7740.15, -6407.29, -3529.51,  ],
-[8657.24, 6763.63, -12977.98, -181.22,  ],
-[10432.20, 7228.67, -15158.59, 3699.54,  ],
-[10533.93, -1127.67, -8259.67, 1458.11,  ],
-[13933.80, -14082.43, 5272.85, 548.35,  ],
-[4139.84, -7143.87, 7808.98, -5739.96,  ],
-[-11416.06, 8940.40, 7919.32, -1647.06,  ],
-[-4858.01, 9489.62, -1048.41, -4450.46,  ],
-[2283.50, 6524.41, -6137.90, -7380.83,  ],
-[10252.54, 7253.15, -13746.58, -1979.99,  ],
-[12436.10, -506.54, -7377.42, -7433.21,  ],
-[13875.65, -13881.30, 6170.34, -2469.32,  ],
-[6343.52, -7037.12, 4239.84, -7534.02,  ],
-[-6535.71, 6275.80, 6120.03, -10569.93,  ],
-[-13526.80, 12395.02, 9438.00, -3628.34,  ],
-[-2405.60, 8279.92, -1951.44, -8821.18,  ],
-[9942.96, 7354.62, -11979.24, -6970.15,  ],
-[9403.18, 2548.84, -6580.29, -13117.53,  ],
-[12284.01, -4685.80, 629.34, -16498.56,  ],
-[15060.61, -11561.99, 8359.57, -13338.70,  ],
-[2024.87, -146.41, 6661.10, -19852.29,  ],
-[-8945.93, 11597.50, 9529.92, -15583.44,  ],
-[257.01, 8975.76, 130.90, -20750.08,  ],
-[9559.57, 7198.64, -6649.38, -19098.09,  ],
-[3646.72, 3292.98, 1921.11, -23278.22,  ],
-[11565.72, -1796.95, 1442.24, -23271.50,  ],
-[13311.67, -4060.44, 7501.33, -27567.81,  ],
-[3651.60, 3241.77, 8378.30, -30394.25,  ],
-[-2494.37, 12164.61, 10433.23, -30393.84,  ],
-[6196.66, 9796.61, 3111.59, -35307.10,  ],
-[10842.77, 3925.26, 3882.29, -35305.57,  ],
-[10859.65, 6947.02, 7490.91, -43577.95,  ],
-[10714.81, 10904.99, 13048.07, -52669.32,  ],
-# hp-mark fails
-[-10843.27, 14451.39, 13647.30, -15586.68, ],
-[4036.97, 3243.27, 10617.52, -32192.57, ],
-[2288.42, 9385.60, -7266.42, -7380.82,  ],
-])
+motor_pos_samp = np.array(
+    [
+        [0.00, -0.07, 0.00, 0.00],
+        [-4834.89, 7431.31, -1079.36, 1309.72],
+        [-4836.05, 953.66, 6659.45, 970.36],
+        [564.76, -3822.39, 4905.07, 512.16],
+        [8813.47, -9838.24, 2856.02, 2158.20],
+        [8634.09, -2206.69, -6170.42, 1894.75],
+        [1763.93, 4885.85, -6499.04, 1229.59],
+        [765.49, 2519.79, -3528.48, 379.65],
+        [10714.81, 10904.99, 13048.07, -52669.32],
+        [834.06, 7740.15, -6407.29, -3529.51],
+        [8657.24, 6763.63, -12977.98, -181.22],
+        [10432.20, 7228.67, -15158.59, 3699.54],
+        [10533.93, -1127.67, -8259.67, 1458.11],
+        [13933.80, -14082.43, 5272.85, 548.35],
+        [4139.84, -7143.87, 7808.98, -5739.96],
+        [-11416.06, 8940.40, 7919.32, -1647.06],
+        [-4858.01, 9489.62, -1048.41, -4450.46],
+        [2283.50, 6524.41, -6137.90, -7380.83],
+        [10252.54, 7253.15, -13746.58, -1979.99],
+        [12436.10, -506.54, -7377.42, -7433.21],
+        [13875.65, -13881.30, 6170.34, -2469.32],
+        [6343.52, -7037.12, 4239.84, -7534.02],
+        [-6535.71, 6275.80, 6120.03, -10569.93],
+        [-13526.80, 12395.02, 9438.00, -3628.34],
+        [-2405.60, 8279.92, -1951.44, -8821.18],
+        [9942.96, 7354.62, -11979.24, -6970.15],
+        [9403.18, 2548.84, -6580.29, -13117.53],
+        [12284.01, -4685.80, 629.34, -16498.56],
+        [15060.61, -11561.99, 8359.57, -13338.70],
+        [2024.87, -146.41, 6661.10, -19852.29],
+        [-8945.93, 11597.50, 9529.92, -15583.44],
+        [257.01, 8975.76, 130.90, -20750.08],
+        [9559.57, 7198.64, -6649.38, -19098.09],
+        [3646.72, 3292.98, 1921.11, -23278.22],
+        [11565.72, -1796.95, 1442.24, -23271.50],
+        [13311.67, -4060.44, 7501.33, -27567.81],
+        [3651.60, 3241.77, 8378.30, -30394.25],
+        [-2494.37, 12164.61, 10433.23, -30393.84],
+        [6196.66, 9796.61, 3111.59, -35307.10],
+        [10842.77, 3925.26, 3882.29, -35305.57],
+        [10859.65, 6947.02, 7490.91, -43577.95],
+        [-10843.27, 14451.39, 13647.30, -15586.68, ],
+        [4036.97, 3243.27, 10617.52, -32192.57, ],
+        [2288.42, 9385.60, -7266.42, -7380.82,  ],
+    ]
+)
 
-force_samp = np.array([
-[13.72, 14.54, 14.07, 12.49,  ],
-[7.70, 13.37, 12.66, 17.58,  ],
-[16.25, 13.43, 12.66, 23.91,  ],
-[9.95, 17.60, 12.45, 20.20,  ],
-[17.16, 16.44, 12.03, 19.87,  ],
-[19.31, 14.89, 13.24, 34.02,  ],
-[14.58, 14.19, 9.47, 22.35,  ],
-[12.99, 13.57, 13.73, 27.10,  ],
-[13.10, 13.69, 13.00, 30.70,  ],
-[13.02, 14.28, 10.87, 26.85,  ],
-[10.72, 14.44, 17.84, 17.51,  ],
-[16.99, 13.59, 14.02, 27.79,  ],
-[12.60, 13.30, 14.17, 29.22,  ],
-[6.83, 16.71, 17.09, 20.36,  ],
-[14.68, 13.58, 12.31, 26.67,  ],
-[20.22, 14.01, 12.22, 22.37,  ],
-[13.02, 13.49, 14.77, 27.55,  ],
-[15.44, 14.05, 10.63, 25.65,  ],
-[12.85, 13.57, 15.53, 23.22,  ],
-[13.12, 14.16, 12.44, 26.05,  ],
-[13.07, 15.49, 8.60, 29.26,  ],
-[14.35, 14.06, 12.83, 25.36,  ],
-[13.51, 14.11, 11.71, 26.58,  ],
-[15.39, 13.54, 16.00, 21.33,  ],
-[17.05, 14.38, 18.41, 24.36,  ],
-[11.03, 14.97, 16.24, 24.12,  ],
-[15.09, 14.37, 19.41, 37.12,  ],
-[11.23, 11.10, 16.99, 31.87,  ],
-[10.50, 14.75, 13.67, 24.32,  ],
-[8.33, 14.85, 14.19, 23.76,  ],
-[12.28, 14.03, 15.06, 34.55,  ],
-[10.51, 13.30, 15.43, 37.29,  ],
-[18.20, 13.48, 15.45, 33.85,  ],
-[12.94, 14.28, 16.53, 26.47,  ],
-[14.46, 14.91, 14.97, 33.12,  ],
-[14.14, 13.54, 12.08, 36.25,  ],
-[20.27, 14.32, 9.42, 36.36,  ],
-[12.86, 13.85, 14.39, 34.25,  ],
-[13.59, 14.30, 13.52, 34.87,  ],
-[7.83, 9.46, 10.95, 36.81,  ],
-[13.16, 9.34, 15.68, 35.77,  ],
-])
+force_samp = np.array(
+    [
+        [13.72, 14.54, 14.07, 12.49],
+        [7.70, 13.37, 12.66, 17.58],
+        [16.25, 13.43, 12.66, 23.91],
+        [9.95, 17.60, 12.45, 20.20],
+        [17.16, 16.44, 12.03, 19.87],
+        [19.31, 14.89, 13.24, 34.02],
+        [14.58, 14.19, 9.47, 22.35],
+        [12.99, 13.57, 13.73, 27.10],
+        [13.10, 13.69, 13.00, 30.70],
+        [13.02, 14.28, 10.87, 26.85],
+        [10.72, 14.44, 17.84, 17.51],
+        [16.99, 13.59, 14.02, 27.79],
+        [12.60, 13.30, 14.17, 29.22],
+        [6.83, 16.71, 17.09, 20.36],
+        [14.68, 13.58, 12.31, 26.67],
+        [20.22, 14.01, 12.22, 22.37],
+        [13.02, 13.49, 14.77, 27.55],
+        [15.44, 14.05, 10.63, 25.65],
+        [12.85, 13.57, 15.53, 23.22],
+        [13.12, 14.16, 12.44, 26.05],
+        [13.07, 15.49, 8.60, 29.26],
+        [14.35, 14.06, 12.83, 25.36],
+        [13.51, 14.11, 11.71, 26.58],
+        [15.39, 13.54, 16.00, 21.33],
+        [17.05, 14.38, 18.41, 24.36],
+        [11.03, 14.97, 16.24, 24.12],
+        [15.09, 14.37, 19.41, 37.12],
+        [11.23, 11.10, 16.99, 31.87],
+        [10.50, 14.75, 13.67, 24.32],
+        [8.33, 14.85, 14.19, 23.76],
+        [12.28, 14.03, 15.06, 34.55],
+        [10.51, 13.30, 15.43, 37.29],
+        [18.20, 13.48, 15.45, 33.85],
+        [12.94, 14.28, 16.53, 26.47],
+        [14.46, 14.91, 14.97, 33.12],
+        [14.14, 13.54, 12.08, 36.25],
+        [20.27, 14.32, 9.42, 36.36],
+        [12.86, 13.85, 14.39, 34.25],
+        [13.59, 14.30, 13.52, 34.87],
+        [7.83, 9.46, 10.95, 36.81],
+        [13.16, 9.34, 15.68, 35.77],
+    ]
+)
 
+
+use_flex = (use_flex_errors or use_flex_in_rotational_errors)
 
 class GracefulKiller:
     kill_now = False
@@ -269,6 +248,7 @@ def distance_samples_relative_to_origin(anchors, pos):
 def pos_to_motor_pos_samples(
     anchors,
     pos,
+    abc_axis_max_force,
     spool_buildup_factor=constant_spool_buildup_factor,
     spool_r_in_origin=spool_r_in_origin_first_guess,
     spool_to_motor_gearing_factor=spool_gear_teeth / motor_gear_teeth,
@@ -296,7 +276,17 @@ def pos_to_motor_pos_samples(
     k0 = 2.0 * degrees_per_unit_times_r / k2
 
     relative_line_lengths = distance_samples_relative_to_origin(anchors, pos)
-    motor_positions = k0 * (np.sqrt(spool_r_in_origin_sq + relative_line_lengths * k2) - spool_r_in_origin)
+    if use_flex_in_rotational_errors:
+        relative_line_lengths += flex_distance(
+            abc_axis_max_force,
+            np.max(np.array([abc_axis_max_force - 1, 0.0001])),
+            anchors,
+            pos,
+            mechanical_advantage,
+            springKPerUnitLength,
+            mover_weight,
+        )
+    motor_positions = k0 * (np.sqrt(abs(spool_r_in_origin_sq + relative_line_lengths * k2)) - spool_r_in_origin)
 
     return motor_positions
 
@@ -320,13 +310,17 @@ def motor_pos_samples_to_distances_relative_to_origin(
     return (((motor_samps / k0) + spool_r) ** 2.0 - spool_r * spool_r) / c1
 
 
-def cost_from_forces(anchors, pos, force_samps, mover_weight):
+def cost_from_forces(anchors, pos, force_samps, mover_weight, abc_axis_max_force):
+
+    pos_w_origin = np.r_[[[0.0, 0.0, 0.0]], pos]
+    anch_to_pos = anchors - pos_w_origin[:, np.newaxis, :]
+    distances = np.linalg.norm(anch_to_pos, 2, 2)
     [ABC_forces_pre, D_forces_pre, ABC_forces_grav, D_forces_grav] = forces_gravity_and_pretension(
         abc_axis_max_force, np.max(np.array([abc_axis_max_force - 1, 0])), anch_to_pos, distances, mover_weight
     )
 
-    synthetic_forces_pre = np.c_[ABC_forces_pre, D_forces_pre]
-    synthetic_forces_grav = np.c_[ABC_forces_grav, D_forces_grav]
+    synthetic_forces_pre = np.c_[ABC_forces_pre, D_forces_pre][1:]
+    synthetic_forces_grav = np.c_[ABC_forces_grav, D_forces_grav][1:]
 
     # Remove gravity related forces from force_samp
     force_samps_pre = force_samps - synthetic_forces_grav
@@ -335,11 +329,19 @@ def cost_from_forces(anchors, pos, force_samps, mover_weight):
     synthetic_forces_pre = synthetic_forces_pre / np.linalg.norm(synthetic_forces_pre, 2, 1)[:, np.newaxis]
     force_samps_pre = force_samps_pre / np.linalg.norm(force_samps_pre, 2, 1)[:, np.newaxis]
 
-    return np.sum(pow(synthetic_force_pre - force_samp_pre, 2))
+    return np.sum(pow(synthetic_forces_pre - force_samps_pre, 2)) * 1000.0
+
 
 
 def cost_sq_for_pos_samp(
-    anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r, line_lengths_when_at_origin, abc_axis_max_force=1
+    anchors,
+    pos,
+    motor_pos_samp,
+    spool_buildup_factor,
+    spool_r,
+    line_lengths_when_at_origin,
+    abc_axis_max_force=1,
+    printit=False,
 ):
     """
     Sum of squares
@@ -349,39 +351,54 @@ def cost_sq_for_pos_samp(
 
     For all samples sum
     (Sample value if anchor position A and cartesian position x were guessed - actual sample)^2
+
+    Then, some variations of that
     """
 
     err = 0
-    if use_flex:
-        err = np.sum(
-            pow(
-                distance_samples_relative_to_origin(anchors, pos)
-                - (
-                    motor_pos_samples_to_distances_relative_to_origin(motor_pos_samp, spool_buildup_factor, spool_r)
-                    - flex_distance(
-                        abc_axis_max_force,
-                        np.max(np.array([abc_axis_max_force - 1, 0.0001])),
-                        anchors,
-                        pos,
-                        mechanical_advantage,
-                        springKPerUnitLength,
-                        mover_weight,
-                    )
-                ),
-                2,
-            )
-        )
-    else:
-        err = np.sum(
-            pow(
-                distance_samples_relative_to_origin(anchors, pos)
-                - motor_pos_samples_to_distances_relative_to_origin(motor_pos_samp, spool_buildup_factor, spool_r),
-                2,
-            )
-        )
+
+
+    if not (use_rotational_errors) and not (use_flex_errors):
+        err += np.sum(pow(
+            distance_samples_relative_to_origin(anchors, pos)
+            - motor_pos_samples_to_distances_relative_to_origin(motor_pos_samp, spool_buildup_factor, spool_r),
+            2,
+        ))
+
+    if use_rotational_errors:
+        synthetic_motor_samp = pos_to_motor_pos_samples(anchors, pos, abc_axis_max_force, spool_r_in_origin=spool_r)
+        err += np.sum(np.sqrt(np.sum(pow((synthetic_motor_samp - motor_pos_samp) / mechanical_advantage, 2))))
+
+    if use_flex_errors:
+        err += np.sum(pow(
+            distance_samples_relative_to_origin(anchors, pos)
+            - (
+                motor_pos_samples_to_distances_relative_to_origin(motor_pos_samp, spool_buildup_factor, spool_r)
+                - flex_distance(
+                    abc_axis_max_force,
+                    np.max(np.array([abc_axis_max_force - 1, 0.0001])),
+                    anchors,
+                    pos,
+                    mechanical_advantage,
+                    springKPerUnitLength,
+                    mover_weight,
+                )
+            ),
+            2,
+        ))
+
     if use_line_lengths_at_origin_data:
         line_lengths_when_at_origin_err = np.linalg.norm(anchors, 2, 1) - line_lengths_when_at_origin
-        err += line_lengths_when_at_origin_err.dot(line_lengths_when_at_origin_err)
+        err += np.sum(abs(line_lengths_when_at_origin_err.dot(line_lengths_when_at_origin_err)))
+
+    if use_forces:
+        err += cost_from_forces(anchors, pos, force_samp, mover_weight, abc_axis_max_force)
+
+    if printit:
+        synthetic_motor_samp = pos_to_motor_pos_samples(anchors, pos, abc_axis_max_force, spool_r_in_origin=spool_r)
+        print("Rotational errors:")
+        print((synthetic_motor_samp - motor_pos_samp) / mechanical_advantage)
+
 
     return err
 
@@ -391,7 +408,7 @@ def cost_sq_for_pos_samp_forward_transform(
 ):
     line_lengths_when_at_origin_err = np.linalg.norm(anchors, 2, 1) - line_lengths_when_at_origin
     line_length_samp = np.zeros((np.size(motor_pos_samp, 0), 3))
-    if use_flex:
+    if use_flex_errors:
         line_length_samp = motor_pos_samples_to_distances_relative_to_origin(
             motor_pos_samp, spool_buildup_factor, spool_r
         ) - flex_distance(
@@ -463,10 +480,19 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debu
     """Find reasonable positions and anchors given a set of samples."""
 
     print(method)
-    if use_flex:
+    if use_flex_errors:
         print("Using flex compensation")
     else:
         print("Assuming zero flex")
+
+    if use_rotational_errors:
+        print("Using rotational errors")
+        if use_flex_in_rotational_errors:
+            print("... using flex compensation in rotational error")
+        else:
+            print("... not using flex compensation in rotational error")
+    else:
+        print("Not using rotational error")
 
     if use_line_lengths_at_origin_data:
         print("Using hand measured line lengths at the origin")
@@ -535,13 +561,10 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debu
             -1300.0,  # A_cz > x
             -500.0,  # A_dx > x
             -500.0,  # A_dy > x
-            1000.0,  # A_dz > x
+            line_lengths_when_at_origin[D] - 100,  # A_dz > x
         ]
         + [-l_short, -l_short, data_z_min] * (u - ux)
-        + [
-            spool_r_in_origin_first_guess[0] - 1.0,
-            spool_r_in_origin_first_guess[3] - 1.0,
-        ]
+        + [spool_r_in_origin_first_guess[0] - 1.50, spool_r_in_origin_first_guess[3] - 1.50]
         + [-xyz_offset_max, -xyz_offset_max, -xyz_offset_max]
     )
     if use_flex:
@@ -560,20 +583,19 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debu
             200.0,  # A_cz < x
             500.0,  # A_dx < x
             500.0,  # A_dy < x
-            l_long,  # A_dz < x
+            line_lengths_when_at_origin[D] + 120,  # A_dz < x
         ]
         + [l_short, l_short, 2.0 * l_short] * (u - ux)
-        + [
-            spool_r_in_origin_first_guess[0] + 5.0,
-            spool_r_in_origin_first_guess[3] + 5.0,
-        ]
+        + [spool_r_in_origin_first_guess[0] + 1.5, spool_r_in_origin_first_guess[3] + 1.5]
         + [xyz_offset_max, xyz_offset_max, xyz_offset_max]
     )
     if use_flex:
         ub = np.append(ub, abc_axis_max_force_limit)
 
     pos_est = np.zeros((u - ux, 3))  # The positions we need to estimate
-    anchors_est = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
+    anchors_est = symmetric_anchors(
+        1500
+    )  # np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
     x_guess = (
         list(anchorsmatrix2vec(anchors_est))[0:params_anch]
         + list(posmatrix2vec(pos_est))
@@ -594,7 +616,7 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debu
         from mystic.termination import VTR, ChangeOverGeneration, And, Or
         from mystic.strategy import Best1Exp, Best1Bin
 
-        stop = Or(VTR(1e-12), ChangeOverGeneration(0.0000001, 5000))
+        stop = Or(VTR(1e-12), ChangeOverGeneration(0.001, 500))
         ndim = number_of_params_pos + params_anch + params_buildup + params_perturb + use_flex
         npop = 3
         stepmon = VerboseMonitor(100)
@@ -605,6 +627,7 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debu
         solver.SetRandomInitialPoints(lb, ub)
         solver.SetStrictRanges(lb, ub)
         solver.SetGenerationMonitor(stepmon)
+        solver.SetEvaluationLimits(evaluations=3200000, generations=10000)
         solver.enable_signal_handler()  # Handle Ctrl+C gracefully. Be restartable
         if use_flex:
             solver.Solve(
@@ -747,7 +770,7 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debu
                     random_guess,
                     method="SLSQP",
                     bounds=list(zip(lb, ub)),
-                    options={"disp": disp, "ftol": 1e-9, "maxiter": 500},
+                    options={"disp": disp, "ftol": 1e-9, "maxiter": 1500},
                 )
             else:
                 sol = scipy.optimize.minimize(
@@ -827,7 +850,7 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debu
 
 def print_copypasteable(anch, spool_buildup_factor, spool_r):
     print(
-            "\nM669 A%.2f:%.2f:%.2f B%.2f:%.2f:%.2f C%.2f:%.2f:%.2f D%.2f:%.2f:%.2f\nM666 R%.3f:%.3f:%.3f:%.3f\n;Here follows constants that are set in the script\nM666 Q%.6f W%.2f S%.2f U%d:%d:%d:%d O%d:%d:%d:%d L%d:%d:%d:%d H%d:%d:%d:%d"
+        "\nM669 A%.2f:%.2f:%.2f B%.2f:%.2f:%.2f C%.2f:%.2f:%.2f D%.2f:%.2f:%.2f\nM666 R%.3f:%.3f:%.3f:%.3f\n;Here follows constants that are set in the script\nM666 Q%.6f W%.2f S%.2f U%d:%d:%d:%d O%d:%d:%d:%d L%d:%d:%d:%d H%d:%d:%d:%d"
         % (
             anch[A, X],
             anch[A, Y],
@@ -1140,6 +1163,19 @@ if __name__ == "__main__":
                 the_cand.anch[D, Z],
             )
         )
+
+        if args["debug"]:
+            cost_sq_for_pos_samp(
+                the_cand.anch,
+                the_cand.pos + the_cand.xyz_offset,
+                motor_pos_samp,
+                constant_spool_buildup_factor,
+                the_cand.spool_r,
+                line_lengths_when_at_origin,
+                the_cand.line_max_force,
+                printit=True,
+            )
+
         print("Spool buildup factor:", the_cand.spool_buildup_factor)  # err
         print("Spool radii:", the_cand.spool_r)
         print("XYZ offset: ", the_cand.xyz_offset)

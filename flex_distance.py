@@ -84,7 +84,7 @@ def flex_distance(
             np.linalg.norm(anchors[0] - anchors[3]),
             np.linalg.norm(anchors[1] - anchors[3]),
             np.linalg.norm(anchors[2] - anchors[3]),
-            0.0,
+            100.0,
         ]
     )
     # Insert the origin as the first position always
