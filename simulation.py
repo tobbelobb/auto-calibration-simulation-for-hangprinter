@@ -15,37 +15,24 @@ import time
 from hangprinter_forward_transform import forward_transform
 from flex_distance import *
 
-# Config values should be based on HP4 defaults
-## Spool buildup
+# Config values should be based on your physical machine
 constant_spool_buildup_factor = 0.006875 * 10  # Qualified first guess for 1.1 mm line
 spool_r_in_origin_first_guess = np.array([75.0, 75.0, 75.0, 75.0])
 spool_gear_teeth = 255
 motor_gear_teeth = 20
 mechanical_advantage = np.array([2.0, 2.0, 2.0, 4.0])
 lines_per_spool = np.array([1.0, 1.0, 1.0, 1.0])
-
-## Line flex config
-use_flex_errors = False
-use_rotational_errors = False
-use_flex_in_rotational_errors = False
-use_line_lengths_at_origin_data = False
-use_forces = False
-
-abc_axis_min_force_limit = 8
-abc_axis_max_force_limit = 140
+line_lengths_when_at_origin = np.array([1597, 1795, 1582.5, 2355])
 springKPerUnitLength = 20000.0
 mover_weight = 2.0
 
-## Algorithm help and tuning
-line_lengths_when_at_origin = np.array([1597, 1795, 1582.5, 2355])
-# line_lengths_when_at_origin = np.array([865, 870, 925, 1500])
+## Line flex config
+## Set use_advanced = False if you have a few xyz_of_samp and an abundance of motor_pos samp.
+## Set use_advanced = True  if you have only a few motor_pos_samp
+use_advanced = False
 
-l_long = 14000.0  # The longest distance from the origin that we should consider for anchor positions
-l_short = 3000.0  # The longest distance from the origin that we should consider for data point collection
-data_z_min = -100.0  # The lowest z-coordinate the algorithm should care about guessing
-xyz_offset_max = (
-    1.0  # Tell the algorithm to check if all xyz-data may carry an offset error compared to the encoder-data
-)
+# Use flex error is you have approximately as many xyz_of_samp as you have motor_pos_samp
+
 
 # Force series 2. The enormous data set
 xyz_of_samp = np.array(
@@ -59,6 +46,19 @@ xyz_of_samp = np.array(
         [-369.145, 45.972, 0],#3.83473],
         [-198.326, 25.0843, 0],#1.23042],
         [62.8474, -55.7797, 1388.51],
+# The data below was generated through uncommenting 2 motor pos samples at a time
+# [-464.806795,  -46.974772,  143.955024],
+# [-632.527667,  331.254013,  121.392137],
+# [-703.216676, 411.958515,  50.005395],
+# [-278.110567, 522.057226,  38.938129],
+# [ 442.210006,  671.524989,  121.209999],
+# [ 466.330866,  132.926058,  196.979542],
+# [  39.475888, -623.779102,  125.749447],
+# [-341.861571, -329.851296,  167.92018 ],
+# [-420.786902,   27.660077,  236.026424],
+# [-677.122653,  393.988603,  193.312867],
+# [-289.614625,  585.852812,  295.144279],
+# [ 474.52496,   651.447335,  204.11496 ],
     ]
 )
 
@@ -157,7 +157,27 @@ force_samp = np.array(
     ]
 )
 
+#################################################################################
+## Warning! User interface ends here. Edit below this line at your own risk. ####
+#################################################################################
+## Algorithm help and tuning
+abc_axis_min_force_limit = 8
+abc_axis_max_force_limit = 140
 
+l_long = 14000.0  # The longest distance from the origin that we should consider for anchor positions
+l_short = 3000.0  # The longest distance from the origin that we should consider for data point collection
+data_z_min = -100.0  # The lowest z-coordinate the algorithm should care about guessing
+xyz_offset_max = (
+    1.0  # Tell the algorithm to check if all xyz-data may carry an offset error compared to the encoder-data
+)
+
+# Rotational errors are just harder to use, but sometimes faster, if you have huge data sets
+# Combine with use_flex_errors = True can improve convergence (make it faster)
+use_flex_errors = use_advanced
+use_rotational_errors = use_advanced
+use_flex_in_rotational_errors = use_advanced
+use_line_lengths_at_origin_data = False
+use_forces = False
 use_flex = (use_flex_errors or use_flex_in_rotational_errors)
 
 class GracefulKiller:
@@ -561,10 +581,10 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debu
             -1300.0,  # A_cz > x
             -500.0,  # A_dx > x
             -500.0,  # A_dy > x
-            line_lengths_when_at_origin[D] - 100,  # A_dz > x
+            0.0,  # A_dz > x
         ]
         + [-l_short, -l_short, data_z_min] * (u - ux)
-        + [spool_r_in_origin_first_guess[0] - 1.50, spool_r_in_origin_first_guess[3] - 1.50]
+        + [spool_r_in_origin_first_guess[0] - 0.50, spool_r_in_origin_first_guess[3] - 0.50]
         + [-xyz_offset_max, -xyz_offset_max, -xyz_offset_max]
     )
     if use_flex:
@@ -583,7 +603,7 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debu
             200.0,  # A_cz < x
             500.0,  # A_dx < x
             500.0,  # A_dy < x
-            line_lengths_when_at_origin[D] + 120,  # A_dz < x
+            l_long,  # A_dz < x
         ]
         + [l_short, l_short, 2.0 * l_short] * (u - ux)
         + [spool_r_in_origin_first_guess[0] + 1.5, spool_r_in_origin_first_guess[3] + 1.5]
@@ -593,6 +613,7 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debu
         ub = np.append(ub, abc_axis_max_force_limit)
 
     pos_est = np.zeros((u - ux, 3))  # The positions we need to estimate
+    #pos_est = 500.0*np.random.random((u - ux, 3))  # The positions we need to estimate
     anchors_est = symmetric_anchors(
         1500
     )  # np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])

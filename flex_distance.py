@@ -71,7 +71,7 @@ def forces_gravity_and_pretension_scaled(
     forces = np.c_[ABC_forces_pre + ABC_forces_grav, D_forces_pre + D_forces_grav]
     # forces = np.c_[ABC_forces_grav, D_forces_grav]
     # forces = np.c_[ABC_forces_pre, D_forces_pre]
-    forces = np.clip(forces, 0, np.max(forces))
+    #forces = np.clip(forces, 0, np.max(forces))
 
     return forces
 
