@@ -30,27 +30,32 @@ sudo pip install mystic
 
 Once dependencies and data are in place, take the time to do
 ```bash
-./simulation.py --help
+python ./simulation.py --help
 ```
 
 The default optimization runs with
 ```bash
-./simulation.py
+python ./simulation.py
 ```
 
 If it works it should finish in a few seconds or minutes.
 The output should look similar to
 ```
 SLSQP
+Assuming zero flex
+Not using rotational error
+Not forcing hand measured line lengths
 Hit Ctrl+C and wait a bit to stop solver and get current best solution.
-number of samples: 26
-input xyz coords:  15
-total cost:        6.955602e+00
-cost per sample:   2.675232e-01
+Number of samples: 44 (is above 40? True)
+Input xyz coords:  27 (is above 18? True)
+Cost per sample:   1.201390e+00 (is below 10.0? True)
+Line length error: 2.364123e+01 (is below 50.0? True)
+All quality conditions met? (True)
 
-M669 A15.81:-1591.97:-125.62 B1294.58:1231.78:-169.71 C-1397.45:727.84:-147.24 D23.90:1.86:2354.88
-M666 Q0.050000 R75.849:75.831:75.428:75.142
-
+M669 A16.83:-1584.86:-113.17 B1290.18:1229.19:-157.45 C-1409.88:742.61:-151.80 D21.85:-0.16:2343.67
+M666 R76.017:76.017:76.017:75.657
+;Here follows constants that are set in the script
+M666 Q0.068750 W2.00 S20000.00 U2:2:2:4 O1:1:1:1 L20:20:20:20 H255:255:255:255
 ```
 Note that these values are calculated from test data.
 They don't correspond to your Hangprinter setup (yet).
@@ -68,9 +73,24 @@ DATA_SERIES_NAME="anchor-calibration-0" ./get_auto_calibration_data_automaticall
 When using hp-mark, we get measured xyz-positions in addition to motor positions for each data sample.
 This guides the `simulation.py` script when searching for better calibration values.
 
+However, it's recommended to only use 9 known xyz-positions.
+First take 8 samples at z=0 (on your print bed), and only trust hp-marks x- and y-values.
+
+Then, take one sample high up, like above z=1000.0 mm.
+For this value trust all of hp-marks xyz-values, or use a measurement tape to double-check the z-value.
+
+For all the ~40 following data collection points, it's recommended to discard your hp-mark measurements, and only use the encoder readings (`motor_pos_samp`).
+This is because hp-mark at the time of writing only uses a single camera, and it's difficult to make its measurements accurate enough to be useful for simulation.py,
+especially along the z-direction.
+
+For the ~40 last data collection points, make them as random and spread out as you can. Go close to the anchors and far away from them, and in all directions.
+
+The `get_auto_calibration_data_automatically.sh` script will spit out your calibration data for you in the end, in the right order and with the right names to paste
+directly into `simulation.py`. Remember to delete the ~40 last `xyz_of_samp` though (unless you reeeeally trust your hp-mark setup a lot).
+
 ### What if I can't run hp-mark?
 
-Then `simulation.py` can still be used without xyz-position data, but it's more involved.
+Then `simulation.py` can still be used without `get_auto_calibration_data_automatically.sh`, but it takes a bit more of manual labour to collect the data.
 
 Data collection depends on motor encoders (ODrives).
 As of July 28, 2021, this is the procedure:
@@ -78,12 +98,16 @@ As of July 28, 2021, this is the procedure:
    Adjust torque magnitude as fits your particular machine.
  - Drag mover to the origin and zero the counters: `G92 X0 Y0 Z0`
  - Mark reference point for all encoders: `M569.3 P40.0:41.0:42.0:43.0 S`
- - Repeat 15 - ca 20 times:
+ - Repeat ca 40 times:
    - Drag mover to position of data point collection.
    - Collect data point: `M569.3 P40.0:41.0:42.0:43.0`
 
 Note that even if you don't run hp-mark, you still need some known xyz-positions for the algorithm to work.
-You can hand measure 4-6 xy-positions on your print bed (z=0), and then collect data points with known xyz-positions there.
+You can hand measure 8 xy-positions on your print bed (z=0), and then collect data points with known xyz-positions there.
+
+You also need one data point collected at a known high-up position.
+Use for example an aiming plumb to confirm that your D-lines are vertical and your nozzle is directly above the origin to set x=y=0, and hand-measure the z-value or
+something.
 
 You will need to type your known positions into `simulation.py` by hand, in the right order.
 
@@ -104,6 +128,12 @@ The program wants to find line lengths that match your physical setup.
 Hand measure your four line lengths when your nozzle is at the origin,
 and input the four (space separated) values through the `-l` or `--line_lengths` argument,
 or you can edit the `line_lengths_origin` values in the source file directly.
+
+The hand measured line lengths will be used to verify that `simulation.py` found a good set of
+config values or not.
+
+You can also force `simulation.py` to find config values that match perfectly with your hand-measurements,
+but this is an advanced feature since it sacrefices the ability to double-check the resulting config.
 
 
 ## How to Insert Data Points In The Source File Directly?
@@ -129,7 +159,7 @@ xyz_of_samp = np.array(
 ```
 
 The first `motor_pos_samp` quadruplet corresponds to the first `xyz_of_samp` triplet and so on.
-It's ok to have more `motor_pos_samp` quadruplets than there are `xyz_of_samp` triplets.
+It's recommended to have more `motor_pos_samp` quadruplets than there are `xyz_of_samp` triplets.
 
 When values are inserted, you can run with no `-x`/`-s`/`-l` flags
 ```bash
@@ -137,37 +167,57 @@ python ./simulation.py
 ```
 
 ## Output Explanation
-The first two lines describe which numerical optimizer is beeing used, and how you can stop it should you want to
+The first five lines describe which numerical optimizer and the cost function is beeing used, and how you can stop it should you want to
 ```
 SLSQP
+Assuming zero flex
+Not using rotational error
+Not forcing hand measured line lengths
 Hit Ctrl+C and wait a bit to stop solver and get current best solution.
 ```
 
 The rest for the first block is printed after the optimization finished.
 It describes the quality of the parameters that were found
 ```
-number of samples: 26
-input xyz coords:  15
-total cost:        6.955602e+00
-cost per sample:   2.675232e-01
+Number of samples: 44 (is above 40? True)
+Input xyz coords:  27 (is above 18? True)
+Cost per sample:   1.201390e+00 (is below 10.0? True)
+Line length error: 2.364123e+01 (is below 50.0? True)
+All quality conditions met? (True)
 ```
-It's recommended that the sum of `number of samples + (input xyz coords)/3` should be above 12.
-Using fewer samples makes it probable that the solver finds bogus anchor positions that still minimizes cost.
-The program will print a warning if you have too few data points.
-
-Ideal data points collected on an ideal machine would give `total cost: 0.000000` for any sample size above 10.
+Ideal data points collected on an ideal machine would give `Cost per sample: 0.000000` and `Line length error: 0.000000` for any sample size above 10.
 In real life this does not happen.
-The `cost per sample` value let you compare results from your different data sets of unequal size.
-In my experience, a `cost per sample` below 2.0, in combination with a large number of samples (>20) and
-a >12 number of input xyz coords, generally means you've found yourself a very good config.
+If all quality conditions are met it generally means you've found yourself a good config.
 
-The second block contains the anchor positions and spool radii that the script found to work best.
-They are formatted so they can be pasted directly into RepRapFirmware's configuration.
+The higher the quality of the data set, the lower the cost and error, and the better the config values.
+
+The second block contains the config values that go into your Hangprinter's `config.g` file.
 ```
-M669 A15.81:-1591.97:-125.62 B1294.58:1231.78:-169.71 C-1397.45:727.84:-147.24 D23.90:1.86:2354.88
-M666 Q0.050000 R75.849:75.831:75.428:75.142
+M669 A16.83:-1584.86:-113.17 B1290.18:1229.19:-157.45 C-1409.88:742.61:-151.80 D21.85:-0.16:2343.67
+M666 R76.017:76.017:76.017:75.657
+;Here follows constants that are set in the script
+M666 Q0.068750 W2.00 S20000.00 U2:2:2:4 O1:1:1:1 L20:20:20:20 H255:255:255:255
 ```
 
+The first line contains the anchor positions that the script found to work best.
+These values are the most important ones to get right.
+
+Then follows the spool radii (`M666 R...`), including any line buildup your spools might carry when your nozzle is at the origin.
+
+And lastly comes a line with configuration constants that were set in the `simulation.py` script.
+They describe the spool buildup factor, the mover weight, the line stiffness, the mechanical advantage, lines per spool, motor gear teeth and spool gear teeth.
+
+All verified and ready to be copy/pasted into `config.g`.
+
+## Alternative Cost Functions
+The script accepts a `-a` or `--advanced` argument.
+If given, the script will try to account for line flex, and in the future possibly also line forces, in your data set.
+
+This will cause the script to run slower and sometimes print a few runtime warnings along the way.
+
+It will fail more often than the standard cost function, but it also has the potential to find ca 10% better config values.
+
+For example a data set that gives ~23 mm line length error with the standard method might get a ~21 mm line length error with the advanced method.
 
 ## Alternative Optimization Algorithms
 I've never met a situation that required alternative optimization algorithms, but they exist.
@@ -190,5 +240,5 @@ sudo python setup.py install
 
 For more on usage, try
 ```bash
-./simulation.py --help
+python ./simulation.py --help
 ```

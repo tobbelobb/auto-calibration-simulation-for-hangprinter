@@ -501,7 +501,7 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debu
     if use_line_lengths_at_origin_data:
         print("Using hand measured line lengths at the origin")
     else:
-        print("Not using hand measured line lengths")
+        print("Not forcing hand measured line lengths")
 
     u = np.shape(motor_pos_samp)[0]
     ux = np.shape(xyz_of_samp)[0]
@@ -921,6 +921,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Find best Hangprinter config based on true line lengths, line difference samples, and xyz positions if known."
     )
+    parser.add_argument("-a", "--advanced", help="Use the advanced cost function", action="store_true")
     parser.add_argument("-d", "--debug", help="Print debug information", action="store_true")
     parser.add_argument(
         "-m",
@@ -968,6 +969,11 @@ if __name__ == "__main__":
     if args["method"] == "4":
         args["method"] = "all"
         print(args["method"])
+
+    use_advanced = args["advanced"]
+    use_flex_errors = use_advanced
+    use_rotational_errors = use_advanced
+    use_flex_in_rotational_errors = use_advanced
 
     # Rough approximations from manual measuring.
     # Does not affect optimization result. Only used for manual sanity check.
@@ -1129,11 +1135,26 @@ if __name__ == "__main__":
 
     st2 = timeit.default_timer()
 
-    print("number of samples: %d" % u)
-    print("input xyz coords:  %d" % (3 * ux))
+    samples_limit = 40
+    xyz_coords_limit = 18
+    enough_samples = u > samples_limit
+    enough_xyz_coords = (3 * ux) > xyz_coords_limit
+    cost_per_sample = the_cand.cost / u
+    cost_per_sample_upper_limit = 10.0
+    cost_per_sample_low_enough = cost_per_sample < cost_per_sample_upper_limit
+    L_errs = np.linalg.norm(the_cand.anch, 2, 1) - line_lengths_when_at_origin
+    line_length_error = np.linalg.norm(L_errs)
+    line_length_error_upper_limit = 50.0
+    line_length_error_low_enough = line_length_error < line_length_error_upper_limit
+
+    print("Number of samples: %d (is above %s? %s)" % (u ,samples_limit, enough_samples))
+    print("Input xyz coords:  %d (is above %s? %s)" % ((3 * ux), xyz_coords_limit, enough_xyz_coords))
     np.set_printoptions(suppress=False)
-    print("total cost:        %e" % the_cand.cost)
-    print("cost per sample:   %e" % (the_cand.cost / u))
+    if args["debug"]:
+        print("Total cost:        %e" % the_cand.cost)
+    print("Cost per sample:   %e (is below %s? %s)" % (cost_per_sample, cost_per_sample_upper_limit, cost_per_sample_low_enough))
+    print("Line length error: %e (is below %s? %s)" % (line_length_error, line_length_error_upper_limit, line_length_error_low_enough))
+    print("All quality conditions met? (%s)" % (enough_samples and enough_xyz_coords and cost_per_sample_low_enough and line_length_error_low_enough))
     np.set_printoptions(suppress=True)
 
     if (u + 3 * ux) < params_anch:
@@ -1193,13 +1214,11 @@ if __name__ == "__main__":
         np.set_printoptions(suppress=True)  # No scientific notation
         print("Data collected at positions: ")
         print(the_cand.pos)
-        L_errs = np.linalg.norm(the_cand.anch, 2, 1) - line_lengths_when_at_origin
-        print("Line length errors:")
+        print("Length errors along each line:")
         print("line_length_error_a=%.2f" % (L_errs[0]))
         print("line_length_error_b=%.2f" % (L_errs[1]))
         print("line_length_error_c=%.2f" % (L_errs[2]))
         print("line_length_error_d=%.2f" % (L_errs[3]))
-        print("Tot line length err=%.2f" % (np.linalg.norm(L_errs)))
         # example_data_pos = np.array(
         #    [
         #        [-1000.0, -1000.0, 1000.0],
