@@ -75,6 +75,7 @@ This guides the `simulation.py` script when searching for better calibration val
 
 However, it's recommended to only use 9 known xyz-positions.
 First take 8 samples at z=0 (on your print bed), and only trust hp-marks x- and y-values.
+Set the z-values to 0 manually.
 
 Then, take one sample high up, like above z=1000.0 mm.
 For this value trust all of hp-marks xyz-values, or use a measurement tape to double-check the z-value.
@@ -210,7 +211,7 @@ They describe the spool buildup factor, the mover weight, the line stiffness, th
 All verified and ready to be copy/pasted into `config.g`.
 
 ## Alternative Cost Functions
-The script accepts a `-a` or `--advanced` argument.
+The script accepts the argument `-a` or `--advanced`.
 If given, the script will try to account for line flex, and in the future possibly also line forces, in your data set.
 
 This will cause the script to run slower and sometimes print a few runtime warnings along the way.
