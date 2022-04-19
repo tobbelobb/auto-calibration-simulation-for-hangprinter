@@ -26,39 +26,22 @@ line_lengths_when_at_origin = np.array([1597, 1795, 1582.5, 2355])
 springKPerUnitLength = 20000.0
 mover_weight = 2.0
 
-## Line flex config
 ## Set use_advanced = False if you have a few xyz_of_samp and an abundance of motor_pos samp.
 ## Set use_advanced = True  if you have only a few motor_pos_samp
 use_advanced = False
 
-# Use flex error is you have approximately as many xyz_of_samp as you have motor_pos_samp
-
-
 # Force series 2. The enormous data set
 xyz_of_samp = np.array(
     [
-        [-0.527094, -0.634946, 0],#-0.370821],
-        [-266.144, -284.39, 0],#5.48368],
-        [240.691, -273.008, 0],#1.84387],
-        [283.932, 7.41853, 0],#-0.878299],
-        [304.608, 435.201, 0],#0.00422374],
-        [-177.608, 438.733, 0],#-1.03731],
-        [-369.145, 45.972, 0],#3.83473],
-        [-198.326, 25.0843, 0],#1.23042],
+        [-0.527094, -0.634946, 0],
+        [-266.144, -284.39, 0],
+        [240.691, -273.008, 0],
+        [283.932, 7.41853, 0],
+        [304.608, 435.201, 0],
+        [-177.608, 438.733, 0],
+        [-369.145, 45.972, 0],
+        [-198.326, 25.0843, 0],
         [62.8474, -55.7797, 1388.51],
-# The data below was generated through uncommenting 2 motor pos samples at a time
-# [-464.806795,  -46.974772,  143.955024],
-# [-632.527667,  331.254013,  121.392137],
-# [-703.216676, 411.958515,  50.005395],
-# [-278.110567, 522.057226,  38.938129],
-# [ 442.210006,  671.524989,  121.209999],
-# [ 466.330866,  132.926058,  196.979542],
-# [  39.475888, -623.779102,  125.749447],
-# [-341.861571, -329.851296,  167.92018 ],
-# [-420.786902,   27.660077,  236.026424],
-# [-677.122653,  393.988603,  193.312867],
-# [-289.614625,  585.852812,  295.144279],
-# [ 474.52496,   651.447335,  204.11496 ],
     ]
 )
 
@@ -173,6 +156,7 @@ xyz_offset_max = (
 
 # Rotational errors are just harder to use, but sometimes faster, if you have huge data sets
 # Combine with use_flex_errors = True can improve convergence (make it faster)
+# Use flex error is you have approximately as many xyz_of_samp as you have motor_pos_samp
 use_flex_errors = use_advanced
 use_rotational_errors = use_advanced
 use_flex_in_rotational_errors = use_advanced
