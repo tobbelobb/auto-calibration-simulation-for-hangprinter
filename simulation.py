@@ -974,6 +974,7 @@ if __name__ == "__main__":
     use_flex_errors = use_advanced
     use_rotational_errors = use_advanced
     use_flex_in_rotational_errors = use_advanced
+    use_flex = (use_flex_errors or use_flex_in_rotational_errors)
 
     # Rough approximations from manual measuring.
     # Does not affect optimization result. Only used for manual sanity check.
