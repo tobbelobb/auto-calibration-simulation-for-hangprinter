@@ -98,9 +98,9 @@ def flex_distance(
     )
 
     springKs = springKPerUnitLength / (distances * mechanical_advantage + guyWireLengths)
-    distances_with_relaxed_springs = distances - forces / (springKs * mechanical_advantage)
+    relaxed_spring_lengths = distances - forces / (springKs * mechanical_advantage)
 
-    line_pos = distances_with_relaxed_springs - distances_with_relaxed_springs[0]
+    line_pos = relaxed_spring_lengths - relaxed_spring_lengths[0]
 
     distance_differences = distances - distances[0]
     impact_of_spring_model = line_pos - distance_differences
