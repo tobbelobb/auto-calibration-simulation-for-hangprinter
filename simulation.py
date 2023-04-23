@@ -226,7 +226,7 @@ def positions(n, l, fuzz=0):
         + 2.0 * fuzz * (np.random.rand(n ** 3, 3) - 0.5)
         + [0, 0, 1 * l]
     )
-    index_closest_to_origin = np.int(np.shape(pos)[0] / 2) - int(n / 2)
+    index_closest_to_origin = int(np.shape(pos)[0] / 2) - int(n / 2)
     # Make pos[0] a point fairly close to origin
     tmp = pos[0].copy()
     pos[0] = pos[index_closest_to_origin]
