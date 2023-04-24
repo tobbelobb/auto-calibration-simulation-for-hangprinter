@@ -8,6 +8,7 @@ import scipy.optimize
 import argparse
 import timeit
 import sys
+import warnings
 
 import signal
 import time
@@ -34,72 +35,158 @@ line_lengths_when_at_origin = np.array([2003.59676582, 2003.59676582, 2003.59676
 
 xyz_of_samp = np.array(
     [
-       [-1.58825333e+01, -2.59800500e+01,  3.14318400e+01],
-       [-1.88119329e+02, -1.87956224e+02,  2.25112072e+02],
-       [-2.05721889e+02, -1.88517340e+02,  4.01833700e+02],
+       [ 1.79255679e+01, -1.76352632e+01, -2.74971510e+01],
+       [-5.23885148e+02, -5.01061599e+02,  5.07741532e+02],
+       [-5.38352510e+02, -5.30255594e+02,  9.53040004e+02],
+       [-5.45189816e+02, -5.58037791e-01,  2.64689901e+01],
+       [-5.20999273e+02, -3.27341154e+00,  5.37019049e+02],
+       [-4.70799477e+02,  1.65498517e+01,  1.04717018e+03],
+       [-5.05362595e+02,  4.67529134e+02, -4.25453256e+01],
+       [-5.13234032e+02,  4.64122399e+02,  5.33480869e+02],
+       [-5.38293120e+02,  5.26060302e+02,  1.03039159e+03],
+       [ 8.98405788e+00, -5.20642383e+02, -2.66148823e+01],
+       [-5.52678502e+00, -5.14840431e+02,  5.17628213e+02],
+       [-3.86000122e+01, -4.92617793e+02,  9.91936222e+02],
+       [-5.07629503e+02, -4.65976040e+02,  3.17537695e+01],
+       [-3.05601452e+01,  3.59665477e+01,  4.58719776e+02],
+       [ 4.32898928e+01,  2.88400594e+01,  1.04672968e+03],
+       [ 1.05874156e+01,  5.04407891e+02, -4.42588518e+01],
+       [-1.99804722e+01,  5.20417440e+02,  5.17004705e+02],
+       [-3.79958866e+01,  4.54266612e+02,  9.75222737e+02],
+       [ 4.55930483e+02, -4.87688259e+02,  2.60515823e+01],
+       [ 4.82712486e+02, -5.20125685e+02,  5.35481389e+02],
+       [ 4.95517745e+02, -5.39356090e+02,  9.65228753e+02],
+       [ 5.00096373e+02, -2.24374570e+01, -4.20139801e+01],
+       [ 4.90657689e+02, -3.04215669e+01,  5.27319817e+02],
+       [ 5.06742907e+02, -3.19689121e+01,  9.98360926e+02],
+       [ 4.90590662e+02,  5.23118645e+02,  4.14092948e+01],
+       [ 5.17848381e+02,  5.01639033e+02,  4.82878157e+02],
+       [ 5.25399857e+02,  4.59863258e+02,  9.81665044e+02]
     ]
 )
 
 # Generated with no flex compensation
-# motor_pos_samples = pos_to_motor_pos_samples(anchors, pos)
+# motor_pos_samp = pos_to_motor_pos_samples(anchors, pos, 0, False)
+#motor_pos_samp = np.array(
+#    [
+#       [  -369.97133086,   -375.66959393,    316.34560633,
+#           321.94609589,   1077.75975713],
+#       [ -5759.01057516,  12615.08424755,  12275.59850843,
+#         -6281.97726753, -13229.98337407],
+#       [ -2060.97219543,  15716.33224264,  15602.69034285,
+#         -2227.35643322, -27381.62276038],
+#       [  1442.4251883 ,  10668.27508761,   1463.3685043 ,
+#        -10512.72933158,   1849.83037262],
+#       [  3159.98245383,  11763.18458403,   3277.83725587,
+#         -7486.81252308, -17322.05908512],
+#       [  7291.94468887,  14266.33816963,   6743.79551879,
+#         -1553.68867173, -36100.64439146],
+#       [ 10090.57203732,  10675.889441  ,  -7542.39424108,
+#         -8463.82172607,   6068.07267818],
+#       [ 11669.77976994,  12405.8842912 ,  -5005.52677327,
+#         -6115.64295821, -14676.39535396],
+#       [ 16129.59499481,  16299.63450814,  -1127.9130486 ,
+#         -1373.47262378, -29820.36571367],
+#       [-10122.43960565,   1100.72500198,  10138.58559936,
+#          1439.38883774,   3605.756548  ],
+#       [ -7527.74534992,   3176.81909782,  11551.45807825,
+#          2977.18307984, -16695.41664699],
+#       [ -2531.87450143,   7228.3147109 ,  14207.41418159,
+#          5938.05560439, -33823.45808762],
+#       [ -7398.16588201,  10779.40735575,  10135.92434965,
+#         -8409.43737118,   3330.02537493],
+#       [  2207.56498303,   2107.80296987,    860.35188277,
+#           963.14232699, -17745.30959353],
+#       [  6582.41640758,   5361.04628015,   5608.31555101,
+#          6823.30727184, -40219.08056667],
+#       [  9809.00939173,    977.4905076 ,  -9827.85176463,
+#          1377.48954933,   4119.45515998],
+#       [ 11655.94023884,   3460.42828979,  -7629.63832939,
+#          2739.08083977, -16597.3181957 ],
+#       [ 13385.27733777,   6915.40099512,  -2118.11173865,
+#          5637.00997696, -33863.99419124],
+#       [ -8108.90080311,  -7342.20860536,  10353.26565632,
+#          9859.27771014,   3267.94097714],
+#       [ -6116.93384181,  -5267.96158535,  12609.82866003,
+#         12052.1408033 , -14452.27937288],
+#       [ -2290.52818859,  -1396.80907196,  15701.50047006,
+#         15083.33018867, -28278.36387567],
+#       [   734.77431785,  -9739.7352902 ,   1582.85973463,
+#          9727.42550404,   3997.73874831],
+#       [  2473.96096152,  -7017.4007458 ,   3574.18124601,
+#         11142.58224923, -17338.278132  ],
+#       [  6168.36875155,  -2680.22457923,   7234.30238782,
+#         14510.73989763, -33810.94743147],
+#       [ 11178.91365375,  -7734.00545613,  -8529.47143446,
+#         10680.97899928,   3344.9573659 ],
+#       [ 12148.6236308 ,  -6352.25541301,  -5979.22868207,
+#         12390.52086778, -12429.90917227],
+#       [ 14529.08862584,  -2070.20634574,   -749.1973495 ,
+#         15459.74674515, -29542.51506619]
+#    ]
+#)
+
+# Generated with flex compensation
+# motor_pos_samples = pos_to_motor_pos_samples(anchors, pos, 20, True)
 motor_pos_samp = np.array(
     [
-       [  -461.88115732,    353.26918953,    547.43686961,
-          -263.73154369,  -1214.981907  ],
-       [ -2908.01556397,   4282.33644063,   4279.47017583,
-         -2911.43673094,  -7978.79821393],
-       [ -2088.07550613,   5284.85923333,   4988.20221246,
-         -2442.75400058, -14646.65856109],
-       [   667.75651095,   2941.80994764,   -458.89136295,
-         -2940.97818842,    462.44463301],
-       [  -110.45155032,   3409.88139212,   1130.57465467,
-         -2603.47140643,  -7078.96142876],
-       [  2043.44252387,   5047.23999715,    747.37788663,
-         -2599.20920467, -14812.41959874],
-       [  4598.15530873,   4697.90989172,  -4026.28664401,
-         -4150.29922059,    321.09343903],
-       [  5308.91715873,   3878.53829854,  -4252.88836512,
-         -2511.31296268,  -6202.15897315],
-       [  5082.40744018,   5169.38956566,  -2107.9573385 ,
-         -2211.63614742, -15084.37008429],
-       [ -3958.53387372,    551.24894324,   4025.18406782,
-           -90.22985729,   -381.91258828],
-       [ -3346.37590635,   1264.11255495,   4014.01080461,
-          -276.31555963,  -5940.27538673],
-       [ -2884.73110765,    589.87248208,   5373.84861705,
-          2293.10243262, -14825.41406898],
-       [ -4330.37063959,   4000.19990097,   4654.20384265,
-         -3526.72378124,   2076.09125022],
-       [   557.52673466,   1364.98724304,    572.33251852,
-          -251.20482177,  -9306.66241   ],
-       [   555.41987022,    968.44335815,   2212.52515483,
-          1811.75760526, -16664.78611131],
-       [  3674.48017258,   -660.2868102 ,  -3593.33797371,
-          1052.20965006,   -437.05389452],
-       [  5058.95097975,    644.33193566,  -4249.51584536,
-           698.8856142 ,  -6711.13744807],
-       [  4309.8394761 ,   1994.2643967 ,  -1624.24977873,
-           896.13914236, -15985.05296962],
-       [ -4226.98098217,  -4396.76323456,   4758.50365237,
-          4893.68334632,   1992.83897614],
-       [ -2279.24832759,  -2820.68069681,   3615.88536212,
-          4078.41769984,  -8136.72019128],
-       [ -1976.10488366,  -2756.20960714,   4480.58843843,
-          5136.04895473, -13086.62527733],
-       [   322.57556755,  -4479.88335141,    197.91554529,
-          4498.4885926 ,    453.02787327],
-       [   632.74533886,  -2814.91999945,    782.88111803,
-          3949.56394814,  -9012.41411774],
-       [  1277.19679188,  -2172.58473421,   1269.31318565,
-          4453.38232427, -14363.81796633],
-       [  3320.70669414,  -4292.26500022,  -2811.5220689 ,
-          4549.18748964,    826.6771929 ],
-       [  3940.13090639,  -3407.54767911,  -2533.50839887,
-          4670.79425717,  -7668.32297016],
-       [  4279.06016137,  -3014.2559298 ,  -1423.09632764,
-          5617.11007048, -14170.30135705],
+       [  -369.58609387,   -375.29396855,    317.91184282,
+           323.52214156,   1076.80959977],
+       [ -5752.0896211 ,  12684.81746173,  12344.08999181,
+         -6275.70760911, -13233.40119754],
+       [ -2048.83305984,  15817.17840356,  15702.84011251,
+         -2215.62052102, -27377.19026704],
+       [  1465.31821991,  10710.4339081 ,   1486.30672549,
+        -10502.25101052,   1843.9394221 ],
+       [  3192.47800976,  11825.29426292,   3310.74909443,
+         -7479.34319472, -17312.3368333 ],
+       [  7338.19413077,  14353.88288287,   6786.70764259,
+         -1552.13573883, -36078.36378187],
+       [ 10132.61635504,  10719.09762197,  -7533.76001979,
+         -8455.38023592,   6051.956053  ],
+       [ 11735.89557575,  12474.71717231,  -4997.83528125,
+         -6109.53899159, -14677.40138713],
+       [ 16233.96918729,  16405.12479906,  -1110.42815967,
+         -1356.59254137, -29813.50295791],
+       [-10112.34907465,   1121.68560353,  10177.34821782,
+          1461.03157744,   3598.89997665],
+       [ -7520.23527999,   3209.13006916,  11611.99173652,
+          3008.80369674, -16686.02305477],
+       [ -2529.34463269,   7275.98142332,  14293.8205203 ,
+          5978.38068699, -33803.02264388],
+       [ -7389.4678355 ,  10825.3409007 ,  10180.48128046,
+         -8401.04998007,   3316.07110403],
+       [  2211.40671242,   2111.29269087,    859.49129879,
+           962.6350027 , -17732.81159413],
+       [  6588.07191703,   5355.67619644,   5605.19961097,
+          6831.09313097, -40190.41314644],
+       [  9846.17173913,    997.64776716,  -9818.05399677,
+          1398.42927125,   4112.4891462 ],
+       [ 11716.99576615,   3493.87937612,  -7622.02684706,
+          2770.03585674, -16588.12507688],
+       [ 13465.52800333,   6960.31851935,  -2115.99503104,
+          5674.69661079, -33842.3921186 ],
+       [ -8100.81240478,  -7333.85350166,  10397.20035247,
+          9902.17005513,   3254.46395956],
+       [ -6110.82858923,  -5260.68626986,  12680.08218414,
+         12120.30954553, -14454.20707365],
+       [ -2281.85299886,  -1385.74175751,  15802.3865989 ,
+         15180.39274419, -28273.03733673],
+       [   754.41149621,  -9730.0251034 ,   1604.15387749,
+          9764.39044336,   3990.93856291],
+       [  2503.16665884,  -7010.39870999,   3607.2108333 ,
+         11201.26908614, -17327.98898451],
+       [  6210.27110993,  -2677.54660214,   7282.28650837,
+         14599.417566  , -33790.95427313],
+       [ 11227.05547733,  -7725.29526968,  -8520.96464144,
+         10728.03213827,   3330.1585467 ],
+       [ 12215.56515786,  -6345.91575306,  -5972.44605709,
+         12458.32108416, -12433.76787772],
+       [ 14622.6285915 ,  -2065.60330095,   -740.5190987 ,
+         15559.1232983 , -29535.92901142]
     ]
 )
+
 
 force_samp = np.array(
     [
@@ -110,8 +197,8 @@ force_samp = np.array(
 ## Warning! User interface ends here. Edit below this line at your own risk. ####
 #################################################################################
 ## Algorithm help and tuning
-low_axis_min_force_limit = 8
-low_axis_max_force_limit = 140
+low_axis_min_force_limit = 0
+low_axis_max_force_limit = 120
 
 l_long = 14000.0  # The longest distance from the origin that we should consider for anchor positions
 l_short = 3000.0  # The longest distance from the origin that we should consider for data point collection
@@ -120,15 +207,7 @@ xyz_offset_max = (
     1.0  # Tell the algorithm to check if all xyz-data may carry an offset error compared to the encoder-data
 )
 
-# Rotational errors are just harder to use, but sometimes faster, if you have huge data sets
-# Combine with use_flex_errors = True can improve convergence (make it faster)
-# Use flex error is you have approximately as many xyz_of_samp as you have motor_pos_samp
-use_flex_errors = use_advanced
-use_rotational_errors = use_advanced
-use_flex_in_rotational_errors = use_advanced
-use_line_lengths_at_origin_data = False
 use_forces = False
-use_flex = (use_flex_errors or use_flex_in_rotational_errors)
 
 class GracefulKiller:
     kill_now = False
@@ -221,6 +300,7 @@ def pos_to_motor_pos_samples(
     anchors,
     pos,
     low_axis_max_force,
+    use_flex,
     spool_buildup_factor=constant_spool_buildup_factor,
     spool_r_in_origin=spool_r_in_origin_first_guess,
     spool_to_motor_gearing_factor=spool_gear_teeth / motor_gear_teeth,
@@ -248,7 +328,7 @@ def pos_to_motor_pos_samples(
     k0 = 2.0 * degrees_per_unit_times_r / k2
 
     relative_line_lengths = distance_samples_relative_to_origin(anchors, pos)
-    if use_flex_in_rotational_errors:
+    if use_flex:
         relative_line_lengths += flex_distance(
             low_axis_max_force,
             np.max(np.array([low_axis_max_force - 1, 0.0001])),
@@ -312,6 +392,8 @@ def cost_sq_for_pos_samp(
     spool_buildup_factor,
     spool_r,
     line_lengths_when_at_origin,
+    use_flex,
+    use_line_lengths,
     low_axis_max_force=1,
     printit=False,
 ):
@@ -330,18 +412,22 @@ def cost_sq_for_pos_samp(
     err = 0
 
 
-    if not (use_rotational_errors) and not (use_flex_errors):
+    if not use_flex:
+        # These are rotational errors
+        #synthetic_motor_samp = pos_to_motor_pos_samples(anchors, pos, low_axis_max_force, use_flex, spool_r_in_origin=spool_r)
+        #err += np.sum(np.sqrt(np.sum(pow((synthetic_motor_samp - motor_pos_samp) / mechanical_advantage, 2))))
+        # These are not rotational errors
         err += np.sum(pow(
             distance_samples_relative_to_origin(anchors, pos)
             - motor_pos_samples_to_distances_relative_to_origin(motor_pos_samp, spool_buildup_factor, spool_r),
             2,
         ))
 
-    if use_rotational_errors:
-        synthetic_motor_samp = pos_to_motor_pos_samples(anchors, pos, low_axis_max_force, spool_r_in_origin=spool_r)
+    if use_flex:
+        # Implies use_rotational_errors
+        synthetic_motor_samp = pos_to_motor_pos_samples(anchors, pos, low_axis_max_force, use_flex, spool_r_in_origin=spool_r)
         err += np.sum(np.sqrt(np.sum(pow((synthetic_motor_samp - motor_pos_samp) / mechanical_advantage, 2))))
-
-    if use_flex_errors:
+        # Add error due to flex
         err += np.sum(pow(
             distance_samples_relative_to_origin(anchors, pos)
             - (
@@ -359,7 +445,7 @@ def cost_sq_for_pos_samp(
             2,
         ))
 
-    if use_line_lengths_at_origin_data:
+    if use_line_lengths:
         line_lengths_when_at_origin_err = np.linalg.norm(anchors, 2, 1) - line_lengths_when_at_origin
         err += np.sum(abs(line_lengths_when_at_origin_err.dot(line_lengths_when_at_origin_err)))
 
@@ -367,7 +453,7 @@ def cost_sq_for_pos_samp(
         err += cost_from_forces(anchors, pos, force_samp, mover_weight, low_axis_max_force)
 
     if printit:
-        synthetic_motor_samp = pos_to_motor_pos_samples(anchors, pos, low_axis_max_force, spool_r_in_origin=spool_r)
+        synthetic_motor_samp = pos_to_motor_pos_samples(anchors, pos, low_axis_max_force, use_flex, spool_r_in_origin=spool_r)
         print("Rotational errors:")
         print((synthetic_motor_samp - motor_pos_samp) / mechanical_advantage)
 
@@ -402,7 +488,7 @@ def cost_sq_for_pos_samp_forward_transform(
         diff = pos[i] - forward_transform(anchors, line_length_samp[i])
         tot_err += diff.dot(diff)
 
-    if use_line_lengths_at_origin_data:
+    if use_line_lengths:
         return tot_err + line_lengths_when_at_origin_err.dot(line_lengths_when_at_origin_err)
 
     return tot_err
@@ -449,25 +535,15 @@ def pre_list(l, num):
     return np.append(np.append(l[0:params_anch], l[params_anch : params_anch + 3 * num]), l[-params_buildup:])
 
 
-def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debug=False):
+def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, use_flex, use_line_lengths, debug=False):
     """Find reasonable positions and anchors given a set of samples."""
 
-    print(method)
-    if use_flex_errors:
+    if use_flex:
         print("Using flex compensation")
     else:
         print("Assuming zero flex")
 
-    if use_rotational_errors:
-        print("Using rotational errors")
-        if use_flex_in_rotational_errors:
-            print("... using flex compensation in rotational error")
-        else:
-            print("... not using flex compensation in rotational error")
-    else:
-        print("Not using rotational error")
-
-    if use_line_lengths_at_origin_data:
+    if use_line_lengths:
         print("Using hand measured line lengths at the origin")
     else:
         print("Not forcing hand measured line lengths")
@@ -485,7 +561,9 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debu
         u,
         line_lengths_when_at_origin,
         perturb,
-        low_axis_max_force=1.0,
+        use_flex,
+        use_line_lengths,
+        low_axis_max_force=120.0,
     ):
         """Identical to cost, except the shape of inputs and capture of samp, xyz_of_samp, ux, and u
 
@@ -517,6 +595,8 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debu
             spool_buildup_factor,
             spool_r,
             line_lengths_when_at_origin,
+            use_flex,
+            use_line_lengths,
             low_axis_max_force,
         )
 
@@ -540,7 +620,7 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debu
                 0.0,  # A_iz > x
         ]
         + [-l_short, -l_short, data_z_min] * (u - ux)
-        + [spool_r_in_origin_first_guess[0] - 0.50, spool_r_in_origin_first_guess[3] - 0.50]
+        + [spool_r_in_origin_first_guess[0] - 0.50, spool_r_in_origin_first_guess[4] - 0.50]
         + [-xyz_offset_max, -xyz_offset_max, -xyz_offset_max]
     )
     if use_flex:
@@ -550,282 +630,95 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, method, debu
         [
             l_long,  # A_ax < x
                0.0,  # A_ay < x
-             200.0,  # A_az < x
+               0.0,  # A_az < x
             l_long,  # A_bx < x
             l_long,  # A_by < x
-             200.0,  # A_bz < x
+               0.0,  # A_bz < x
             l_long,  # A_cx < x
             l_long,  # A_cy < x
-             200.0,  # A_cz < x
+               0.0,  # A_cz < x
                0.0,  # A_dx < x
             l_long,  # A_dy < x
-             200.0,  # A_dz < x
+               0.0,  # A_dz < x
              500.0,  # A_ix < x
              500.0,  # A_iy < x
             l_long,  # A_iz < x
         ]
         + [l_short, l_short, 2.0 * l_short] * (u - ux)
-        + [spool_r_in_origin_first_guess[0] + 1.5, spool_r_in_origin_first_guess[3] + 1.5]
+        + [spool_r_in_origin_first_guess[0] + 1.5, spool_r_in_origin_first_guess[4] + 1.5]
         + [xyz_offset_max, xyz_offset_max, xyz_offset_max]
     )
+
     if use_flex:
         ub = np.append(ub, low_axis_max_force_limit)
 
+    #pos_est = 500.0*np.random.random((u - ux, 3)) - 250.0  # The positions we need to estimate
+    #anchors_est = symmetric_anchors(
+    #    1500
+    #)  # np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
+    # Start at zeros
     pos_est = np.zeros((u - ux, 3))  # The positions we need to estimate
-    #pos_est = 500.0*np.random.random((u - ux, 3))  # The positions we need to estimate
-    anchors_est = symmetric_anchors(
-        1500
-    )  # np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
+    anchors_est = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
     x_guess = (
         list(anchorsmatrix2vec(anchors_est))[0:params_anch]
         + list(posmatrix2vec(pos_est))
         + list([spool_r_in_origin_first_guess[0], spool_r_in_origin_first_guess[4]])
         + [0, 0, 0]
     )
+    maxiter = 1500
     if use_flex:
-        x_guess += [10.0]
+        x_guess += [0.0]
+        maxiter = 500
 
     disp = False
     if debug:
         disp = True
 
-    if method == "differentialEvolutionSolver":
-        print("Hit Ctrl+C to stop solver. Then type exit to get the current solution.")
-        from mystic.solvers import DifferentialEvolutionSolver2
-        from mystic.monitors import VerboseMonitor, Monitor
-        from mystic.termination import VTR, ChangeOverGeneration, And, Or
-        from mystic.strategy import Best1Exp, Best1Bin
-
-        stop = Or(VTR(1e-12), ChangeOverGeneration(0.001, 500))
-        ndim = number_of_params_pos + params_anch + params_buildup + params_perturb + use_flex
-        npop = 3
-        stepmon = VerboseMonitor(100)
-        if not disp:
-            stepmon = Monitor()
-        solver = DifferentialEvolutionSolver2(ndim, npop)
-
-        solver.SetRandomInitialPoints(lb, ub)
-        solver.SetStrictRanges(lb, ub)
-        solver.SetGenerationMonitor(stepmon)
-        solver.SetEvaluationLimits(evaluations=3200000, generations=10000)
-        solver.enable_signal_handler()  # Handle Ctrl+C gracefully. Be restartable
-        if use_flex:
-            solver.Solve(
-                lambda x: costx(
-                    cost_sq_for_pos_samp,
-                    x[params_anch : -(params_buildup + params_perturb + 1)],
-                    x[0:params_anch],
-                    constant_spool_buildup_factor,
-                    x[-(params_buildup + params_perturb + 1) : -(params_perturb + 1)],
-                    u,
-                    line_lengths_when_at_origin,
-                    x[-(params_perturb + 1) : -1],
-                    x[-1],
-                ),
-                termination=stop,
-                strategy=Best1Bin,
-            )
-        else:
-            solver.Solve(
-                lambda x: costx(
-                    cost_sq_for_pos_samp,
-                    x[params_anch : -(params_buildup + params_perturb)],
-                    x[0:params_anch],
-                    constant_spool_buildup_factor,
-                    x[-(params_buildup + params_perturb) : -params_perturb],
-                    u,
-                    line_lengths_when_at_origin,
-                    x[-params_perturb:],
-                ),
-                termination=stop,
-                strategy=Best1Bin,
-            )
-
-        # use monitor to retrieve results information
-        iterations = len(stepmon)
-        cost = stepmon.y[-1]
+    best_cost = 999999.9
+    best_x = x_guess
+    killer = GracefulKiller()
+    print("Hit Ctrl+C and wait a bit to stop solver and get current best solution.")
+    tries = 8
+    for i in range(tries):
         if disp:
-            print("Generation %d has best Chi-Squared: %f" % (iterations, cost))
-        best_x = solver.Solution()
-        if not type(best_x[0]) == float:
-            best_x = np.array([float(pos) for pos in best_x])
-        return best_x
+            print("Try: %d/%d" % (i + 1, tries))
+        if killer.kill_now:
+            break
+        random_guess = np.array([b[0] + (b[1] - b[0]) * np.random.rand() for b in list(zip(lb, ub))])
 
-    elif method == "PowellDirectionalSolver":
-        from mystic.solvers import PowellDirectionalSolver
-        from mystic.termination import Or, CollapseAt, CollapseAs
-        from mystic.termination import ChangeOverGeneration as COG
-        from mystic.monitors import VerboseMonitor, Monitor
-        from mystic.termination import VTR, And, Or
-
-        ndim = number_of_params_pos + params_anch + params_buildup + params_perturb + use_flex
-        killer = GracefulKiller()
-        best_cost = 9999999999999.9
-        i = 0
-        print("Hit Ctrl+C and wait a bit to stop solver and get current best solution.")
-        while True:
-            i = i + 1
+        with warnings.catch_warnings():
+          warnings.filterwarnings('ignore', message='Values in x were outside bounds during a minimize step, clipping to bounds')
+          sol = scipy.optimize.minimize(
+              lambda x: costx(
+                  cost_sq_for_pos_samp,
+                  # cost_sq_for_pos_samp_forward_transform,
+                  # cost_sq_for_pos_samp_combined,
+                  x[params_anch : -(params_buildup + params_perturb + use_flex)],
+                  x[0:params_anch],
+                  constant_spool_buildup_factor,
+                  x[-(params_buildup + params_perturb + use_flex) : -(params_perturb + use_flex)],
+                  u,
+                  line_lengths_when_at_origin,
+                  x[-(params_perturb + use_flex):(x.size - use_flex)],
+                  use_flex,
+                  use_line_lengths,
+                  x[-1],
+              ),
+              random_guess,
+              method="SLSQP",
+              bounds=list(zip(lb, ub)),
+              options={"disp": disp, "ftol": 1e-9, "maxiter": maxiter},
+          )
+        if sol.fun < best_cost:
             if disp:
-                print("Try: %d/5" % i)
-            if killer.kill_now or i == 5:
-                break
-            solver = PowellDirectionalSolver(ndim)
-            solver.SetRandomInitialPoints(lb, ub)
-            solver.SetEvaluationLimits(evaluations=3200000, generations=100000)
-            solver.SetTermination(Or(VTR(1e-25), COG(1e-10, 10)))
-            solver.SetStrictRanges(lb, ub)
-            solver.SetGenerationMonitor(VerboseMonitor(5))
-            if not disp:
-                solver.SetGenerationMonitor(Monitor())
-            if use_flex:
-                solver.Solve(
-                    lambda x: costx(
-                        cost_sq_for_pos_samp,
-                        x[params_anch : -(params_buildup + params_perturb + 1)],
-                        x[0:params_anch],
-                        constant_spool_buildup_factor,
-                        x[-(params_buildup + params_perturb + 1) : -(params_perturb + 1)],
-                        u,
-                        line_lengths_when_at_origin,
-                        x[-(params_perturb + 1) : -1],
-                        x[-1],
-                    )
-                )
-            else:
-                solver.Solve(
-                    lambda x: costx(
-                        cost_sq_for_pos_samp,
-                        x[params_anch : -(params_buildup + params_perturb)],
-                        x[0:params_anch],
-                        constant_spool_buildup_factor,
-                        x[-(params_buildup + params_perturb) : -(params_perturb)],
-                        u,
-                        line_lengths_when_at_origin,
-                        x[-params_perturb:],
-                    )
-                )
-            if solver.bestEnergy < best_cost:
-                if disp:
-                    print("New best x: ")
-                    print("With cost: ", solver.bestEnergy)
-                best_cost = solver.bestEnergy
-                best_x = np.array(solver.bestSolution)
-            if solver.bestEnergy < 0.0001:
-                if disp:
-                    print("Found a perfect solution!")
-                break
+                print("New best x: ")
+                print("With cost: ", sol.fun)
+            best_cost = sol.fun
+            best_x = sol.x
 
-        if not type(best_x[0]) == float:
-            best_x = np.array([float(pos) for pos in best_x])
-        return best_x
-
-    elif method == "SLSQP":
-        # Create a random guess
-        best_cost = 999999.9
-        best_x = x_guess
-        killer = GracefulKiller()
-        print("Hit Ctrl+C and wait a bit to stop solver and get current best solution.")
-        tries = 8
-        for i in range(tries):
-            if disp:
-                print("Try: %d/%d" % (i + 1, tries))
-            if killer.kill_now:
-                break
-            random_guess = np.array([b[0] + (b[1] - b[0]) * np.random.rand() for b in list(zip(lb, ub))])
-            if use_flex:
-                sol = scipy.optimize.minimize(
-                    lambda x: costx(
-                        cost_sq_for_pos_samp,
-                        # cost_sq_for_pos_samp_forward_transform,
-                        # cost_sq_for_pos_samp_combined,
-                        x[params_anch : -(params_buildup + params_perturb + 1)],
-                        x[0:params_anch],
-                        constant_spool_buildup_factor,
-                        x[-(params_buildup + params_perturb + 1) : -(params_perturb + 1)],
-                        u,
-                        line_lengths_when_at_origin,
-                        x[-(params_perturb + 1) : -1],
-                        x[-1],
-                    ),
-                    random_guess,
-                    method="SLSQP",
-                    bounds=list(zip(lb, ub)),
-                    options={"disp": disp, "ftol": 1e-9, "maxiter": 1500},
-                )
-            else:
-                sol = scipy.optimize.minimize(
-                    lambda x: costx(
-                        cost_sq_for_pos_samp,
-                        # cost_sq_for_pos_samp_forward_transform,
-                        # cost_sq_for_pos_samp_combined,
-                        x[params_anch : -(params_buildup + params_perturb)],
-                        x[0:params_anch],
-                        constant_spool_buildup_factor,
-                        x[-(params_buildup + params_perturb) : -(params_perturb)],
-                        u,
-                        line_lengths_when_at_origin,
-                        x[-(params_perturb):],
-                    ),
-                    random_guess,
-                    method="SLSQP",
-                    bounds=list(zip(lb, ub)),
-                    options={"disp": disp, "ftol": 1e-9, "maxiter": 500},
-                )
-            if sol.fun < best_cost:
-                if disp:
-                    print("New best x: ")
-                    print("With cost: ", sol.fun)
-                best_cost = sol.fun
-                best_x = sol.x
-
-        if not type(best_x[0]) == float:
-            best_x = np.array([float(pos) for pos in best_x])
-        return np.array(best_x)
-
-    elif method == "L-BFGS-B":
-        print("You can not interrupt this solver without losing the solution.")
-        if use_flex:
-            best_x = scipy.optimize.minimize(
-                lambda x: costx(
-                    cost_sq_for_pos_samp,
-                    x[params_anch : -(params_buildup + params_perturb + 1)],
-                    x[0:params_anch],
-                    constant_spool_buildup_factor,
-                    x[-(params_buildup + params_perturb + 1) : -(params_perturb + 1)],
-                    u,
-                    line_lengths_when_at_origin,
-                    x[-(params_perturb + 1) : -1],
-                    x[-1],
-                ),
-                x_guess,
-                method="L-BFGS-B",
-                bounds=list(zip(lb, ub)),
-                options={"disp": disp, "ftol": 1e-9, "gtol": 1e-12, "maxiter": 50000, "maxfun": 1000000},
-            ).x
-        else:
-            best_x = scipy.optimize.minimize(
-                lambda x: costx(
-                    cost_sq_for_pos_samp,
-                    x[params_anch : -(params_buildup + params_perturb)],
-                    x[0:params_anch],
-                    constant_spool_buildup_factor,
-                    x[-(params_buildup + params_perturb) : -(params_perturb)],
-                    u,
-                    line_lengths_when_at_origin,
-                    x[-(params_perturb):],
-                ),
-                x_guess,
-                method="L-BFGS-B",
-                bounds=list(zip(lb, ub)),
-                options={"disp": disp, "ftol": 1e-12, "gtol": 1e-12, "maxiter": 50000, "maxfun": 1000000},
-            ).x
-        if not type(best_x[0]) == float:
-            best_x = np.array([float(pos) for pos in best_x])
-        return best_x
-
-    else:
-        print("Method %s is not supported!" % method)
-        sys.exit(1)
+    if not type(best_x[0]) == float:
+        best_x = np.array([float(pos) for pos in best_x])
+    return np.array(best_x)
 
 
 def print_copypasteable(anch, spool_buildup_factor, spool_r):
@@ -910,12 +803,6 @@ if __name__ == "__main__":
     parser.add_argument("-a", "--advanced", help="Use the advanced cost function", action="store_true")
     parser.add_argument("-d", "--debug", help="Print debug information", action="store_true")
     parser.add_argument(
-        "-m",
-        "--method",
-        help="Available methods are SLSQP (0), PowellDirectionalSolver (1), L-BFGS-B (2), differentialEvolutionSolver (3), and all (4). Try 0 first, then 1, and so on.",
-        default="SLSQP",
-    )
-    parser.add_argument(
         "-x",
         "--xyz_of_samp",
         help="Specify the XYZ-positions where samples were made as numbers separated by spaces.",
@@ -944,35 +831,9 @@ if __name__ == "__main__":
     )
     args = vars(parser.parse_args())
 
-    if args["method"] == "0":
-        args["method"] = "SLSQP"
-    if args["method"] == "1":
-        args["method"] = "PowellDirectionalSolver"
-    if args["method"] == "2":
-        args["method"] = "L-BFGS-B"
-    if args["method"] == "3":
-        args["method"] = "differentialEvolutionSolver"
-    if args["method"] == "4":
-        args["method"] = "all"
-        print(args["method"])
-
-    use_advanced = args["advanced"]
-    use_flex_errors = use_advanced
-    use_rotational_errors = use_advanced
-    use_flex_in_rotational_errors = use_advanced
-    use_flex = (use_flex_errors or use_flex_in_rotational_errors)
-
-    # Rough approximations from manual measuring.
-    # Does not affect optimization result. Only used for manual sanity check.
-    anchors = np.array(
-        [
-            [0, -1620, -150],
-            [1800, 0, -150],
-            [0, 1620, -150],
-            [-1800, 0, -150],
-            [0, 0, 2350],
-        ]
-    )
+    use_flex = args["advanced"]
+    use_line_lengths = args["advanced"]
+    #use_line_lengths = False
 
     # Possibly overwrite hard-coded data with command line-provided data
     xyz_of_samp_ = args["xyz_of_samp"]
@@ -1036,28 +897,18 @@ if __name__ == "__main__":
             )
         else:
             pos = np.reshape([x for x in solution[params_anch : -(params_buildup + params_perturb + use_flex)]], (u, 3))
-        if use_flex:
-            # return cost_sq_for_pos_samp_forward_transform(
-            return cost_sq_for_pos_samp(
-                anch,
-                pos + solution[-(params_perturb + 1) : -1],
-                motor_pos_samp,
-                constant_spool_buildup_factor,
-                spool_r,
-                line_lengths_when_at_origin,
-                line_max_force,
-            )
-        else:
-            # return cost_sq_for_pos_samp_forward_transform(
-            return cost_sq_for_pos_samp(
-                anch,
-                pos + solution[-params_perturb:],
-                motor_pos_samp,
-                constant_spool_buildup_factor,
-                spool_r,
-                line_lengths_when_at_origin,
-                line_max_force,
-            )
+        # return cost_sq_for_pos_samp_forward_transform(
+        return cost_sq_for_pos_samp(
+            anch,
+            pos + solution[-(params_perturb + use_flex):(solution.size - use_flex)],
+            motor_pos_samp,
+            constant_spool_buildup_factor,
+            spool_r,
+            line_lengths_when_at_origin,
+            use_flex,
+            use_line_lengths,
+            line_max_force,
+        )
 
     ndim = 3 * (u - ux) + params_anch + params_buildup + params_perturb + use_flex
 
@@ -1105,21 +956,10 @@ if __name__ == "__main__":
 
     the_cand = candidate("no_name", np.zeros(ndim))
     st1 = timeit.default_timer()
-    if args["method"] == "all":
-        cands = [
-            candidate(
-                cand_name, solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, cand_name, args["debug"])
-            )
-            for cand_name in ["SLSQP", "PowellDirectionalSolver", "L-BFGS-B", "differentialEvolutionSolver"]
-        ]
-        cands[:] = sorted(cands, key=lambda cand: cand.cost)
-        print("Winner method: is %s" % cands[0].name)
-        the_cand = cands[0]
-    else:
-        the_cand = candidate(
-            args["method"],
-            solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, args["method"], args["debug"]),
-        )
+    the_cand = candidate(
+        "no_name",
+        solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, use_flex, use_line_lengths, args["debug"]),
+    )
 
     st2 = timeit.default_timer()
 
@@ -1189,6 +1029,8 @@ if __name__ == "__main__":
                 constant_spool_buildup_factor,
                 the_cand.spool_r,
                 line_lengths_when_at_origin,
+                use_flex,
+                use_line_lengths,
                 the_cand.line_max_force,
                 printit=True,
             )
@@ -1211,40 +1053,3 @@ if __name__ == "__main__":
         print("line_length_error_c=%.2f" % (L_errs[2]))
         print("line_length_error_d=%.2f" % (L_errs[3]))
         print("line_length_error_i=%.2f" % (L_errs[4]))
-        # example_data_pos = np.array(
-        #    [
-        #        [-1000.0, -1000.0, 1000.0],
-        #        [-1000.0, -1000.0, 2000.0],
-        #        [-1000.0, 0.0, 0.0],
-        #        [-1000.0, 0.0, 1000.0],
-        #        [-1000.0, 0.0, 2000.0],
-        #        [-1000.0, 1000.0, 0.0],
-        #        [-1000.0, 1000.0, 1000.0],
-        #        [-1000.0, 1000.0, 2000.0],
-        #        [0.0, -1000.0, 0.0],
-        #        [0.0, -1000.0, 1000.0],
-        #        [0.0, -1000.0, 2000.0],
-        #        [-1000.0, -1000.0, 0.0],
-        #        [0.0, 0.0, 1000.0],
-        #        [0.0, 0.0, 2000.0],
-        #        [0.0, 1000.0, 0.0],
-        #        [0.0, 1000.0, 1000.0],
-        #        [0.0, 1000.0, 2000.0],
-        #        [1000.0, -1000.0, 0.0],
-        #        [1000.0, -1000.0, 1000.0],
-        #        [1000.0, -1000.0, 2000.0],
-        #        [1000.0, 0.0, 0.0],
-        #        [1000.0, 0.0, 1000.0],
-        #        [1000.0, 0.0, 2000.0],
-        #        [1000.0, 1000.0, 0.0],
-        #        [1000.0, 1000.0, 1000.0],
-        #        [1000.0, 1000.0, 2000.0],
-        #    ]
-        # )
-        # print("pos err: ")
-        # print(the_cand.pos - example_data_pos)
-        # print(
-        #    "spool_buildup_compensation err: %1.6f"
-        #    % (the_cand.spool_buildup_factor - 0.008)
-        # )
-        # print("spool_r err:", the_cand.spool_r - np.array([65, 65, 65, 65]))

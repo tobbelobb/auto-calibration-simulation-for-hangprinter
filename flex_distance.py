@@ -27,7 +27,11 @@ def forces_gravity_and_pretension(low_axis_max_force, low_axis_target_force, anc
 
     force_directions = unit_vectors_along_force(anch_to_pos, distances)
 
-    top_mg = mg / force_directions[:, 2, 4]
+    # Avoid division by zero
+    threshold = 1e-8
+    force_directions_z_safe = np.where(np.abs(force_directions[:, 2, 4]) > threshold, force_directions[:, 2, 4], threshold)
+
+    top_mg = mg / force_directions_z_safe
     BCD_matrices = force_directions[:,:,(B,C,D)]
     ACD_matrices = force_directions[:,:,(A,C,D)]
     ABD_matrices = force_directions[:,:,(A,B,D)]
@@ -58,10 +62,21 @@ def forces_gravity_and_pretension(low_axis_max_force, low_axis_target_force, anc
     except:
         pass
 
-    BCD_forces_pre = low_axis_target_force * BCD_forces_pre / np.linalg.norm(BCD_forces_pre, axis=1)[:,np.newaxis]
-    ACD_forces_pre = low_axis_target_force * ACD_forces_pre / np.linalg.norm(ACD_forces_pre, axis=1)[:,np.newaxis]
-    ABD_forces_pre = low_axis_target_force * ABD_forces_pre / np.linalg.norm(ABD_forces_pre, axis=1)[:,np.newaxis]
-    ABC_forces_pre = low_axis_target_force * ABC_forces_pre / np.linalg.norm(ABC_forces_pre, axis=1)[:,np.newaxis]
+    # Just avoid dividing by zero
+    threshold = 1e-8
+    BCD_norms = np.linalg.norm(BCD_forces_pre, axis=1)[:, np.newaxis]
+    BCD_norms = np.where(BCD_norms > threshold, BCD_norms, threshold)
+    ACD_norms = np.linalg.norm(ACD_forces_pre, axis=1)[:, np.newaxis]
+    ACD_norms = np.where(ACD_norms > threshold, ACD_norms, threshold)
+    ABD_norms = np.linalg.norm(ABD_forces_pre, axis=1)[:, np.newaxis]
+    ABD_norms = np.where(ABD_norms > threshold, ABD_norms, threshold)
+    ABC_norms = np.linalg.norm(ABC_forces_pre, axis=1)[:, np.newaxis]
+    ABC_norms = np.where(ABC_norms > threshold, ABC_norms, threshold)
+
+    BCD_forces_pre = low_axis_target_force * BCD_forces_pre / BCD_norms
+    ACD_forces_pre = low_axis_target_force * ACD_forces_pre / ACD_norms
+    ABD_forces_pre = low_axis_target_force * ABD_forces_pre / ABD_norms
+    ABC_forces_pre = low_axis_target_force * ABC_forces_pre / ABC_norms
     BCD_forces_grav = BCD_forces_grav / 4.0
     ACD_forces_grav = ACD_forces_grav / 4.0
     ABD_forces_grav = ABD_forces_grav / 4.0
@@ -83,18 +98,24 @@ def forces_gravity_and_pretension_scaled(
         low_axis_max_force, low_axis_target_force, anch_to_pos, distances, mover_weight
     )
 
+    # Avoid division by zero
+    threshold = 1e-8
+    pre = np.c_[low_forces_pre, top_forces_pre]
+    pre_safe = np.where(pre > threshold, pre, threshold)
+
+
     # Make ABC_axes pull with exactly max force, or less
     scale_it = np.min(
         np.c_[
             np.max(
                 abs(
                     (low_axis_target_force - np.c_[low_forces_grav, top_forces_grav])
-                    / np.c_[low_forces_pre, top_forces_pre]
+                    / pre_safe
                 ),
                 1,
             ),
             np.min(
-                np.abs((low_axis_max_force - np.c_[low_forces_grav, top_forces_grav]) / np.c_[low_forces_pre, top_forces_pre]),
+                np.abs((low_axis_max_force - np.c_[low_forces_grav, top_forces_grav]) / pre_safe),
                 1,
             ),
         ],
