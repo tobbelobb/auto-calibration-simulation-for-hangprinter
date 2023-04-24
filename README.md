@@ -11,14 +11,18 @@ The Hangprinter Project has a goal of auto-calibration.
 That requires locating anchor points by sampling relative line lengths with straight lines at unknown positions.
 This code tries to optimize the anchor positions to fit the samples of relative line lengths.
 
-Note that this code assumes that the B-anchor has a positive x-coordinate.
-If your machine's B-anchor is negative then your output anchors Bx and Cx will have the wrong signs.
+Note that this code assumes:
+ - A-anchor has a near-zero x-coordinate and negative y-coordinate
+ - B-anchor has a positive x-coordinate and near-zero y-coordinate
+ - C-anchor has a near-zero x-coordinate and positive y-coordinate
+ - D-anchor has a negative x-coordinate and near-zero y-coordinate
+ - I-anchor has a near-zero x-coordinate and near-zero y-coordinate
 
 ## Dependencies
 Relies heavily on [numpy](https://github.com/numpy/numpy).
 It uses either [scipy](https://scipy.org/) or [mystic](https://github.com/uqfoundation/mystic) for the optimization algorithms.
 
-Here's the commands I used to get Python2.7 libs up and running on my machine running Ubuntu 14.04:
+Here are the approximate names of packages you need if you're on Ubuntu:
 ```bash
 sudo apt-get install build-essential python-dev python-pip python-tk python-scipy python-numpy
 ```
