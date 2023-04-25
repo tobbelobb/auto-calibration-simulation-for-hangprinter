@@ -123,8 +123,7 @@ Your I-anchor should be roughly vertically above your origin.
 ## Line Length Data
 The program wants to find line lengths that match your physical setup.
 Hand measure your four line lengths when your nozzle is at the origin,
-and input the four (space separated) values through the `-l` or `--line_lengths` argument,
-or you can edit the `line_lengths_when_at_origin` values in the `data.py` directly.
+and edit the `line_lengths_when_at_origin` values in `data.py`.
 
 The hand measured line lengths will be used to verify that `simulation.py` found a good set of
 config values or not.
