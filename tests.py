@@ -5,11 +5,11 @@ from simulation import *
 
 class tester:
     "Hold some state that is common to several tests."
-    anchors = symmetric_anchors(4000, 0, 0, 0)
+    anchors = symmetric_anchors(4000, 0, 0, 0, 0)
     pos = positions(3, 1000)
-    spool_r = 75 * np.ones(4)
+    spool_r = 75 * np.ones(5)
     gear_factor = 255.0 / 20.0
-    mech_adv = np.array([2, 2, 2, 4])
+    mech_adv = np.array([2, 2, 2, 2, 4])
     samp = distance_samples_relative_to_origin(anchors, pos)
     samp_in_degrees_without_buildup_comp = gear_factor * mech_adv * samp * 360 / (2 * np.pi * spool_r)
 
@@ -17,6 +17,8 @@ class tester:
         return pos_to_motor_pos_samples(
             self.anchors,
             self.pos,
+            0,
+            False,
             spool_buildup_factor,
             self.spool_r,
             self.gear_factor,
