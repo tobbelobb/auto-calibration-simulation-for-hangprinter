@@ -9,6 +9,7 @@ import argparse
 import timeit
 import sys
 import warnings
+import concurrent.futures
 
 import signal
 import time
@@ -208,17 +209,6 @@ xyz_offset_max = (
 )
 
 use_forces = False
-
-class GracefulKiller:
-    kill_now = False
-
-    def __init__(self):
-        signal.signal(signal.SIGINT, self.exit_gracefully)
-        signal.signal(signal.SIGTERM, self.exit_gracefully)
-
-    def exit_gracefully(self, signum, frame):
-        self.kill_now = True
-
 
 # Axes indexing
 A = 0
@@ -535,6 +525,76 @@ def pre_list(l, num):
     return np.append(np.append(l[0:params_anch], l[params_anch : params_anch + 3 * num]), l[-params_buildup:])
 
 
+def parallel_optimize(random_guess, lb, ub, costx, params_anch, params_buildup, params_perturb, use_flex, use_line_lengths, line_lengths_when_at_origin, constant_spool_buildup_factor, disp, maxiter, motor_pos_samp, xyz_of_samp):
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', message='Values in x were outside bounds during a minimize step, clipping to bounds')
+        sol = scipy.optimize.minimize(
+            lambda x: costx(
+                x[params_anch : -(params_buildup + params_perturb + use_flex)],
+                x[0:params_anch],
+                constant_spool_buildup_factor,
+                x[-(params_buildup + params_perturb + use_flex) : -(params_perturb + use_flex)],
+                line_lengths_when_at_origin,
+                x[-(params_perturb + use_flex):(x.size - use_flex)],
+                use_flex,
+                use_line_lengths,
+                x[-1],
+                motor_pos_samp,
+                xyz_of_samp,
+            ),
+            random_guess,
+            method="SLSQP",
+            bounds=list(zip(lb, ub)),
+            options={"disp": disp, "ftol": 1e-9, "maxiter": maxiter},
+        )
+    return sol
+
+def costx(
+    posvec,
+    anchvec,
+    spool_buildup_factor,
+    spool_r,
+    line_lengths_when_at_origin,
+    perturb,
+    use_flex,
+    use_line_lengths,
+    low_axis_max_force,
+    motor_pos_samp,
+    xyz_of_samp,
+):
+    """Identical to cost, except the shape of inputs and capture of samp, xyz_of_samp, ux, and u"""
+
+
+    u = np.shape(motor_pos_samp)[0]
+    ux = np.shape(xyz_of_samp)[0]
+    if len(posvec) > 0:
+        posvec = np.array([pos for pos in posvec])
+    anchvec = np.array([anch for anch in anchvec])
+    spool_r = np.array([r for r in spool_r])
+    spool_r = np.r_[spool_r[0], spool_r[0], spool_r[0], spool_r]
+    perturb = np.array([p for p in perturb])
+
+    anchors = anchorsvec2matrix(anchvec)
+    pos = np.zeros((u, 3))
+    if np.size(xyz_of_samp) != 0:
+        pos[0:ux] = xyz_of_samp
+    if u > ux:
+        pos[ux:] = np.reshape(posvec, (u - ux, 3))
+
+    return cost_sq_for_pos_samp(
+        anchors,
+        pos + perturb,
+        motor_pos_samp[:u],
+        spool_buildup_factor,
+        spool_r,
+        line_lengths_when_at_origin,
+        use_flex,
+        use_line_lengths,
+        low_axis_max_force,
+    )
+
+
+
 def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, use_flex, use_line_lengths, debug=False):
     """Find reasonable positions and anchors given a set of samples."""
 
@@ -551,54 +611,6 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, use_flex, us
     u = np.shape(motor_pos_samp)[0]
     ux = np.shape(xyz_of_samp)[0]
     number_of_params_pos = 3 * (u - ux)
-
-    def costx(
-        _cost,
-        posvec,
-        anchvec,
-        spool_buildup_factor,
-        spool_r,
-        u,
-        line_lengths_when_at_origin,
-        perturb,
-        use_flex,
-        use_line_lengths,
-        low_axis_max_force=120.0,
-    ):
-        """Identical to cost, except the shape of inputs and capture of samp, xyz_of_samp, ux, and u
-
-        Parameters
-        ----------
-        x : [A_ay A_az A_bx A_by A_bz A_cx A_cy A_cz A_dz A_ix A_iy A_iz
-               x1   y1   z1   x2   y2   z2   ...  xu   yu   zu
-        """
-
-        if len(posvec) > 0:
-            posvec = np.array([pos for pos in posvec])
-        anchvec = np.array([anch for anch in anchvec])
-        spool_r = np.array([r for r in spool_r])
-        spool_r = np.r_[spool_r[0], spool_r[0], spool_r[0], spool_r]
-        perturb = np.array([p for p in perturb])
-
-        anchors = anchorsvec2matrix(anchvec)
-        # Adds in known positions back in before calculating the cost
-        pos = np.zeros((u, 3))
-        if np.size(xyz_of_samp) != 0:
-            pos[0:ux] = xyz_of_samp
-        if u > ux:
-            pos[ux:] = np.reshape(posvec, (u - ux, 3))
-
-        return _cost(
-            anchors,
-            pos + perturb,
-            motor_pos_samp[:u],
-            spool_buildup_factor,
-            spool_r,
-            line_lengths_when_at_origin,
-            use_flex,
-            use_line_lengths,
-            low_axis_max_force,
-        )
 
     # Limits of anchor positions:
     lb = np.array(
@@ -676,39 +688,15 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, use_flex, us
 
     best_cost = 999999.9
     best_x = x_guess
-    killer = GracefulKiller()
-    print("Hit Ctrl+C and wait a bit to stop solver and get current best solution.")
-    tries = 8
-    for i in range(tries):
-        if disp:
-            print("Try: %d/%d" % (i + 1, tries))
-        if killer.kill_now:
-            break
-        random_guess = np.array([b[0] + (b[1] - b[0]) * np.random.rand() for b in list(zip(lb, ub))])
 
-        with warnings.catch_warnings():
-          warnings.filterwarnings('ignore', message='Values in x were outside bounds during a minimize step, clipping to bounds')
-          sol = scipy.optimize.minimize(
-              lambda x: costx(
-                  cost_sq_for_pos_samp,
-                  # cost_sq_for_pos_samp_forward_transform,
-                  # cost_sq_for_pos_samp_combined,
-                  x[params_anch : -(params_buildup + params_perturb + use_flex)],
-                  x[0:params_anch],
-                  constant_spool_buildup_factor,
-                  x[-(params_buildup + params_perturb + use_flex) : -(params_perturb + use_flex)],
-                  u,
-                  line_lengths_when_at_origin,
-                  x[-(params_perturb + use_flex):(x.size - use_flex)],
-                  use_flex,
-                  use_line_lengths,
-                  x[-1],
-              ),
-              random_guess,
-              method="SLSQP",
-              bounds=list(zip(lb, ub)),
-              options={"disp": disp, "ftol": 1e-9, "maxiter": maxiter},
-          )
+    tries = 8
+    random_guesses = [np.array([b[0] + (b[1] - b[0]) * np.random.rand() for b in list(zip(lb, ub))]) for _ in range(tries)]
+
+
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        solutions = list(executor.map(parallel_optimize, random_guesses, [lb] * tries, [ub] * tries, [costx] * tries, [params_anch] * tries, [params_buildup] * tries, [params_perturb] * tries, [use_flex] * tries, [use_line_lengths] * tries, [line_lengths_when_at_origin] * tries, [constant_spool_buildup_factor] * tries, [disp] * tries, [maxiter] * tries, [motor_pos_samp] * tries, [xyz_of_samp] * tries ))
+
+    for sol in solutions:
         if sol.fun < best_cost:
             if disp:
                 print("New best x: ")
@@ -718,6 +706,7 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, use_flex, us
 
     if not type(best_x[0]) == float:
         best_x = np.array([float(pos) for pos in best_x])
+
     return np.array(best_x)
 
 
