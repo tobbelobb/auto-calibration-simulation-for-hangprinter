@@ -1,8 +1,8 @@
-# This Branch Is Part Of HP4 Development. To Be Used Together With RepRapFirmware.
+# This Branch Is Part Of HP5 Development. To Be Used Together With RepRapFirmware.
 
-HP4 RepRapFirmware v3.4 and onwards uses `M569.3` and `M569.4` to collect auto calibration data in the form of motor/encoder positions in degrees. HP3 worked differently. This branch of this repo auto calibrates based on encoder position data. That is why this branch of this repo only works with HP4, and not HP3.
+HP5 uses four low anchors and one high anchor. The code in this branch will not work for any other anchor configuration.
 
-# Auto Calibration Simulation for Hangprinter v4
+# Auto Calibration Simulation for Hangprinter v5
 
 Hangprinter is a parallel line driven RepRap 3D Printer.
 It's repo is [here](https://gitlab.com/tobben/hangprinter).
@@ -37,7 +37,7 @@ The default optimization runs with
 ./simulation.py
 ```
 
-If it works it should finish in a few seconds or minutes.
+If it works it should finish in a few seconds.
 The output should look similar to
 ```
 Assuming zero flex
