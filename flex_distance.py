@@ -29,17 +29,19 @@ def forces_gravity_and_pretension(low_axis_max_force, low_axis_target_force, anc
 
     # Avoid division by zero
     threshold = 1e-8
-    force_directions_z_safe = np.where(np.abs(force_directions[:, 2, 4]) > threshold, force_directions[:, 2, 4], threshold)
+    force_directions_z_safe = np.where(
+        np.abs(force_directions[:, 2, 4]) > threshold, force_directions[:, 2, 4], threshold
+    )
 
     top_mg = mg / force_directions_z_safe
-    BCD_matrices = force_directions[:,:,(B,C,D)]
-    ACD_matrices = force_directions[:,:,(A,C,D)]
-    ABD_matrices = force_directions[:,:,(A,B,D)]
-    ABC_matrices = force_directions[:,:,(A,B,C)]
+    BCD_matrices = force_directions[:, :, (B, C, D)]
+    ACD_matrices = force_directions[:, :, (A, C, D)]
+    ABD_matrices = force_directions[:, :, (A, B, D)]
+    ABC_matrices = force_directions[:, :, (A, B, C)]
 
     # Scale the top-direction vectors by the target_force
-    top_pre = low_axis_target_force * force_directions[:,:,4]
-    top_grav = np.c_[force_directions[:, :3, 4] * top_mg[:, np.newaxis]] + np.array([0,0,-mg])
+    top_pre = low_axis_target_force * force_directions[:, :, 4]
+    top_grav = np.c_[force_directions[:, :3, 4] * top_mg[:, np.newaxis]] + np.array([0, 0, -mg])
 
     # Find the ABCD forces needed to cancel out target_force in top-direction
     BCD_forces_pre = np.zeros((np.size(distances, 0), 4))
@@ -51,14 +53,14 @@ def forces_gravity_and_pretension(low_axis_max_force, low_axis_target_force, anc
     ABC_forces_pre = np.zeros((np.size(distances, 0), 4))
     ABC_forces_grav = np.zeros((np.size(distances, 0), 4))
     try:
-        BCD_forces_pre[:,(B,C,D)] = np.linalg.solve(BCD_matrices, -top_pre)
-        BCD_forces_grav[:,(B,C,D)] = np.linalg.solve(BCD_matrices, -top_grav)
-        ACD_forces_pre[:,(A,C,D)] = np.linalg.solve(ACD_matrices, -top_pre)
-        ACD_forces_grav[:,(A,C,D)] = np.linalg.solve(ACD_matrices, -top_grav)
-        ABD_forces_pre[:, (A,B,D)] = np.linalg.solve(ABD_matrices, -top_pre)
-        ABD_forces_grav[:, (A,B,D)] = np.linalg.solve(ABD_matrices, -top_grav)
-        ABC_forces_pre[:, (A,B,C)] = np.linalg.solve(ABC_matrices, -top_pre)
-        ABC_forces_grav[:, (A,B,C)] = np.linalg.solve(ABC_matrices, -top_grav)
+        BCD_forces_pre[:, (B, C, D)] = np.linalg.solve(BCD_matrices, -top_pre)
+        BCD_forces_grav[:, (B, C, D)] = np.linalg.solve(BCD_matrices, -top_grav)
+        ACD_forces_pre[:, (A, C, D)] = np.linalg.solve(ACD_matrices, -top_pre)
+        ACD_forces_grav[:, (A, C, D)] = np.linalg.solve(ACD_matrices, -top_grav)
+        ABD_forces_pre[:, (A, B, D)] = np.linalg.solve(ABD_matrices, -top_pre)
+        ABD_forces_grav[:, (A, B, D)] = np.linalg.solve(ABD_matrices, -top_grav)
+        ABC_forces_pre[:, (A, B, C)] = np.linalg.solve(ABC_matrices, -top_pre)
+        ABC_forces_grav[:, (A, B, C)] = np.linalg.solve(ABC_matrices, -top_grav)
     except:
         pass
 
@@ -82,7 +84,6 @@ def forces_gravity_and_pretension(low_axis_max_force, low_axis_target_force, anc
     ABD_forces_grav = ABD_forces_grav / 4.0
     ABC_forces_grav = ABC_forces_grav / 4.0
 
-
     p = BCD_forces_pre + ACD_forces_pre + ABD_forces_pre + ABC_forces_pre
     m = BCD_forces_grav + ACD_forces_grav + ABD_forces_grav + ABC_forces_grav
     forces = [p, np.linalg.norm(top_pre, axis=1), m, np.linalg.norm(top_grav, axis=1)]
@@ -103,15 +104,11 @@ def forces_gravity_and_pretension_scaled(
     pre = np.c_[low_forces_pre, top_forces_pre]
     pre_safe = np.where(pre > threshold, pre, threshold)
 
-
     # Make ABC_axes pull with exactly max force, or less
     scale_it = np.min(
         np.c_[
             np.max(
-                abs(
-                    (low_axis_target_force - np.c_[low_forces_grav, top_forces_grav])
-                    / pre_safe
-                ),
+                abs((low_axis_target_force - np.c_[low_forces_grav, top_forces_grav]) / pre_safe),
                 1,
             ),
             np.min(
@@ -128,7 +125,7 @@ def forces_gravity_and_pretension_scaled(
     forces = np.c_[low_forces_pre + low_forces_grav, top_forces_pre + top_forces_grav]
     # forces = np.c_[low_forces_grav, top_forces_grav]
     # forces = np.c_[low_forces_pre, top_forces_pre]
-    #forces = np.clip(forces, 0, np.max(forces))
+    # forces = np.clip(forces, 0, np.max(forces))
 
     return forces
 

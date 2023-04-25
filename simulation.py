@@ -45,7 +45,6 @@ params_buildup = 2
 params_perturb = 3
 
 
-
 def cost_from_forces(anchors, pos, force_samps, mover_weight, low_axis_max_force):
 
     pos_w_origin = np.r_[[[0.0, 0.0, 0.0]], pos]
@@ -66,7 +65,6 @@ def cost_from_forces(anchors, pos, force_samps, mover_weight, low_axis_max_force
     force_samps_pre = force_samps_pre / np.linalg.norm(force_samps_pre, 2, 1)[:, np.newaxis]
 
     return np.sum(pow(synthetic_forces_pre - force_samps_pre, 2)) * 1000.0
-
 
 
 def cost_sq_for_pos_samp(
@@ -97,51 +95,57 @@ def cost_sq_for_pos_samp(
 
     if not use_flex:
         # These are rotational errors
-        #synthetic_motor_samp = pos_to_motor_pos_samples(anchors, pos, low_axis_max_force, use_flex, spool_r_in_origin=spool_r)
-        #err += np.sum(np.sqrt(np.sum(pow((synthetic_motor_samp - motor_pos_samp) / mechanical_advantage, 2))))
+        # synthetic_motor_samp = pos_to_motor_pos_samples(anchors, pos, low_axis_max_force, use_flex, spool_r_in_origin=spool_r)
+        # err += np.sum(np.sqrt(np.sum(pow((synthetic_motor_samp - motor_pos_samp) / mechanical_advantage, 2))))
         # These are not rotational errors
-        err += np.sum(pow(
-            distance_samples_relative_to_origin(anchors, pos)
-            - motor_pos_samples_to_distances_relative_to_origin(motor_pos_samp, spool_buildup_factor, spool_r),
-            2,
-        ))
+        err += np.sum(
+            pow(
+                distance_samples_relative_to_origin(anchors, pos)
+                - motor_pos_samples_to_distances_relative_to_origin(motor_pos_samp, spool_buildup_factor, spool_r),
+                2,
+            )
+        )
 
     if use_flex:
         # Implies use_rotational_errors
-        synthetic_motor_samp = pos_to_motor_pos_samples(anchors, pos, low_axis_max_force, use_flex, spool_r_in_origin=spool_r)
+        synthetic_motor_samp = pos_to_motor_pos_samples(
+            anchors, pos, low_axis_max_force, use_flex, spool_r_in_origin=spool_r
+        )
         err += np.sum(np.sqrt(np.sum(pow((synthetic_motor_samp - motor_pos_samp) / mechanical_advantage, 2))))
         # Add error due to flex
-        err += np.sum(pow(
-            distance_samples_relative_to_origin(anchors, pos)
-            - (
-                motor_pos_samples_to_distances_relative_to_origin(motor_pos_samp, spool_buildup_factor, spool_r)
-                - flex_distance(
-                    low_axis_max_force,
-                    np.max(np.array([low_axis_max_force - 1, 0.0001])),
-                    anchors,
-                    pos,
-                    mechanical_advantage,
-                    springKPerUnitLength,
-                    mover_weight,
-                )
-            ),
-            2,
-        ))
+        err += np.sum(
+            pow(
+                distance_samples_relative_to_origin(anchors, pos)
+                - (
+                    motor_pos_samples_to_distances_relative_to_origin(motor_pos_samp, spool_buildup_factor, spool_r)
+                    - flex_distance(
+                        low_axis_max_force,
+                        np.max(np.array([low_axis_max_force - 1, 0.0001])),
+                        anchors,
+                        pos,
+                        mechanical_advantage,
+                        springKPerUnitLength,
+                        mover_weight,
+                    )
+                ),
+                2,
+            )
+        )
 
     if use_line_lengths:
         line_lengths_when_at_origin_err = np.linalg.norm(anchors, 2, 1) - line_lengths_when_at_origin
         err += np.sum(abs(line_lengths_when_at_origin_err.dot(line_lengths_when_at_origin_err)))
-
 
     # use_forces = False
     # if use_forces:
     #     err += cost_from_forces(anchors, pos, force_samp, mover_weight, low_axis_max_force)
 
     if printit:
-        synthetic_motor_samp = pos_to_motor_pos_samples(anchors, pos, low_axis_max_force, use_flex, spool_r_in_origin=spool_r)
+        synthetic_motor_samp = pos_to_motor_pos_samples(
+            anchors, pos, low_axis_max_force, use_flex, spool_r_in_origin=spool_r
+        )
         print("Rotational errors:")
         print((synthetic_motor_samp - motor_pos_samp) / mechanical_advantage)
-
 
     return err
 
@@ -205,7 +209,23 @@ def anchorsvec2matrix(anchorsvec):
 
 
 def anchorsmatrix2vec(a):
-    return [a[A, X], a[A, Y], a[A, Z], a[B, X], a[B, Y], a[B, Z], a[C, X], a[C, Y], a[C, Z], a[D, X], a[D, Y], a[D, Z], a[I, X], a[I, Y], a[I, Z]]
+    return [
+        a[A, X],
+        a[A, Y],
+        a[A, Z],
+        a[B, X],
+        a[B, Y],
+        a[B, Z],
+        a[C, X],
+        a[C, Y],
+        a[C, Z],
+        a[D, X],
+        a[D, Y],
+        a[D, Z],
+        a[I, X],
+        a[I, Y],
+        a[I, Z],
+    ]
 
 
 def posvec2matrix(v, u):
@@ -220,9 +240,27 @@ def pre_list(l, num):
     return np.append(np.append(l[0:params_anch], l[params_anch : params_anch + 3 * num]), l[-params_buildup:])
 
 
-def parallel_optimize(random_guess, lb, ub, costx, params_anch, params_buildup, params_perturb, use_flex, use_line_lengths, line_lengths_when_at_origin, constant_spool_buildup_factor, disp, maxiter, motor_pos_samp, xyz_of_samp):
+def parallel_optimize(
+    random_guess,
+    lb,
+    ub,
+    costx,
+    params_anch,
+    params_buildup,
+    params_perturb,
+    use_flex,
+    use_line_lengths,
+    line_lengths_when_at_origin,
+    constant_spool_buildup_factor,
+    disp,
+    maxiter,
+    motor_pos_samp,
+    xyz_of_samp,
+):
     with warnings.catch_warnings():
-        warnings.filterwarnings('ignore', message='Values in x were outside bounds during a minimize step, clipping to bounds')
+        warnings.filterwarnings(
+            "ignore", message="Values in x were outside bounds during a minimize step, clipping to bounds"
+        )
         sol = scipy.optimize.minimize(
             lambda x: costx(
                 x[params_anch : -(params_buildup + params_perturb + use_flex)],
@@ -230,7 +268,7 @@ def parallel_optimize(random_guess, lb, ub, costx, params_anch, params_buildup, 
                 constant_spool_buildup_factor,
                 x[-(params_buildup + params_perturb + use_flex) : -(params_perturb + use_flex)],
                 line_lengths_when_at_origin,
-                x[-(params_perturb + use_flex):(x.size - use_flex)],
+                x[-(params_perturb + use_flex) : (x.size - use_flex)],
                 use_flex,
                 use_line_lengths,
                 x[-1],
@@ -243,6 +281,7 @@ def parallel_optimize(random_guess, lb, ub, costx, params_anch, params_buildup, 
             options={"disp": disp, "ftol": 1e-9, "maxiter": maxiter},
         )
     return sol
+
 
 def costx(
     posvec,
@@ -258,7 +297,6 @@ def costx(
     xyz_of_samp,
 ):
     """Identical to cost, except the shape of inputs and capture of samp, xyz_of_samp, ux, and u"""
-
 
     u = np.shape(motor_pos_samp)[0]
     ux = np.shape(xyz_of_samp)[0]
@@ -289,7 +327,6 @@ def costx(
     )
 
 
-
 def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, use_flex, use_line_lengths, debug=False):
     """Find reasonable positions and anchors given a set of samples."""
 
@@ -313,18 +350,18 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, use_flex, us
             -l_long,  # A_ax > x
             -l_long,  # A_ay > x
             -1300.0,  # A_az > x
-                0.0,  # A_bx > x
+            0.0,  # A_bx > x
             -l_long,  # A_by > x
             -1300.0,  # A_bz > x
             -l_long,  # A_cx > x
-                0.0,  # A_cy > x
+            0.0,  # A_cy > x
             -1300.0,  # A_cz > x
             -l_long,  # A_dx > x
             -l_long,  # A_dy > x
             -1300.0,  # A_dz > x
-             -500.0,  # A_ix > x
-             -500.0,  # A_iy > x
-                0.0,  # A_iz > x
+            -500.0,  # A_ix > x
+            -500.0,  # A_iy > x
+            0.0,  # A_iz > x
         ]
         + [-l_short, -l_short, data_z_min] * (u - ux)
         + [spool_r_in_origin_first_guess[0] - 0.50, spool_r_in_origin_first_guess[4] - 0.50]
@@ -336,19 +373,19 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, use_flex, us
     ub = np.array(
         [
             l_long,  # A_ax < x
-               0.0,  # A_ay < x
-               0.0,  # A_az < x
+            0.0,  # A_ay < x
+            0.0,  # A_az < x
             l_long,  # A_bx < x
             l_long,  # A_by < x
-               0.0,  # A_bz < x
+            0.0,  # A_bz < x
             l_long,  # A_cx < x
             l_long,  # A_cy < x
-               0.0,  # A_cz < x
-               0.0,  # A_dx < x
+            0.0,  # A_cz < x
+            0.0,  # A_dx < x
             l_long,  # A_dy < x
-               0.0,  # A_dz < x
-             500.0,  # A_ix < x
-             500.0,  # A_iy < x
+            0.0,  # A_dz < x
+            500.0,  # A_ix < x
+            500.0,  # A_iy < x
             l_long,  # A_iz < x
         ]
         + [l_short, l_short, 2.0 * l_short] * (u - ux)
@@ -359,10 +396,10 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, use_flex, us
     if use_flex:
         ub = np.append(ub, low_axis_max_force_limit)
 
-    #pos_est = 500.0*np.random.random((u - ux, 3)) - 250.0  # The positions we need to estimate
-    #anchors_est = symmetric_anchors(
+    # pos_est = 500.0*np.random.random((u - ux, 3)) - 250.0  # The positions we need to estimate
+    # anchors_est = symmetric_anchors(
     #    1500
-    #)  # np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
+    # )  # np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
     # Start at zeros
     pos_est = np.zeros((u - ux, 3))  # The positions we need to estimate
     anchors_est = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
@@ -385,11 +422,31 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, use_flex, us
     best_x = x_guess
 
     tries = 8
-    random_guesses = [np.array([b[0] + (b[1] - b[0]) * np.random.rand() for b in list(zip(lb, ub))]) for _ in range(tries)]
-
+    random_guesses = [
+        np.array([b[0] + (b[1] - b[0]) * np.random.rand() for b in list(zip(lb, ub))]) for _ in range(tries)
+    ]
 
     with concurrent.futures.ProcessPoolExecutor() as executor:
-        solutions = list(executor.map(parallel_optimize, random_guesses, [lb] * tries, [ub] * tries, [costx] * tries, [params_anch] * tries, [params_buildup] * tries, [params_perturb] * tries, [use_flex] * tries, [use_line_lengths] * tries, [line_lengths_when_at_origin] * tries, [constant_spool_buildup_factor] * tries, [disp] * tries, [maxiter] * tries, [motor_pos_samp] * tries, [xyz_of_samp] * tries ))
+        solutions = list(
+            executor.map(
+                parallel_optimize,
+                random_guesses,
+                [lb] * tries,
+                [ub] * tries,
+                [costx] * tries,
+                [params_anch] * tries,
+                [params_buildup] * tries,
+                [params_perturb] * tries,
+                [use_flex] * tries,
+                [use_line_lengths] * tries,
+                [line_lengths_when_at_origin] * tries,
+                [constant_spool_buildup_factor] * tries,
+                [disp] * tries,
+                [maxiter] * tries,
+                [motor_pos_samp] * tries,
+                [xyz_of_samp] * tries,
+            )
+        )
 
     for sol in solutions:
         if sol.fun < best_cost:
@@ -442,16 +499,16 @@ def print_copypasteable(anch, spool_buildup_factor, spool_r):
             lines_per_spool[C],
             lines_per_spool[D],
             lines_per_spool[I],
-            motor_gear_teeth, # A
-            motor_gear_teeth, # B
-            motor_gear_teeth, # C
-            motor_gear_teeth, # D
-            motor_gear_teeth, # I
-            spool_gear_teeth, # A
-            spool_gear_teeth, # B
-            spool_gear_teeth, # C
-            spool_gear_teeth, # D
-            spool_gear_teeth, # I
+            motor_gear_teeth,  # A
+            motor_gear_teeth,  # B
+            motor_gear_teeth,  # C
+            motor_gear_teeth,  # D
+            motor_gear_teeth,  # I
+            spool_gear_teeth,  # A
+            spool_gear_teeth,  # B
+            spool_gear_teeth,  # C
+            spool_gear_teeth,  # D
+            spool_gear_teeth,  # I
         )
     )
 
@@ -519,7 +576,7 @@ if __name__ == "__main__":
         # return cost_sq_for_pos_samp_forward_transform(
         return cost_sq_for_pos_samp(
             anch,
-            pos + solution[-(params_perturb + use_flex):(solution.size - use_flex)],
+            pos + solution[-(params_perturb + use_flex) : (solution.size - use_flex)],
             motor_pos_samp,
             constant_spool_buildup_factor,
             spool_r,
@@ -594,14 +651,23 @@ if __name__ == "__main__":
     line_length_error_upper_limit = 50.0
     line_length_error_low_enough = line_length_error < line_length_error_upper_limit
 
-    print("Number of samples: %d (is above %s? %s)" % (u ,samples_limit, enough_samples))
+    print("Number of samples: %d (is above %s? %s)" % (u, samples_limit, enough_samples))
     print("Input xyz coords:  %d (is above %s? %s)" % ((3 * ux), xyz_coords_limit, enough_xyz_coords))
     np.set_printoptions(suppress=False)
     if args["debug"]:
         print("Total cost:        %e" % the_cand.cost)
-    print("Cost per sample:   %e (is below %s? %s)" % (cost_per_sample, cost_per_sample_upper_limit, cost_per_sample_low_enough))
-    print("Line length error: %e (is below %s? %s)" % (line_length_error, line_length_error_upper_limit, line_length_error_low_enough))
-    print("All quality conditions met? (%s)" % (enough_samples and enough_xyz_coords and cost_per_sample_low_enough and line_length_error_low_enough))
+    print(
+        "Cost per sample:   %e (is below %s? %s)"
+        % (cost_per_sample, cost_per_sample_upper_limit, cost_per_sample_low_enough)
+    )
+    print(
+        "Line length error: %e (is below %s? %s)"
+        % (line_length_error, line_length_error_upper_limit, line_length_error_low_enough)
+    )
+    print(
+        "All quality conditions met? (%s)"
+        % (enough_samples and enough_xyz_coords and cost_per_sample_low_enough and line_length_error_low_enough)
+    )
     np.set_printoptions(suppress=True)
 
     if (u + 3 * ux) < params_anch:
