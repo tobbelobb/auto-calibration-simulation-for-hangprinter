@@ -31,8 +31,6 @@ xyz_offset_max = (
     1.0  # Tell the algorithm to check if all xyz-data may carry an offset error compared to the encoder-data
 )
 
-use_forces = False
-
 # Axes indexing
 A = 0
 B = 1
@@ -45,7 +43,6 @@ Z = 2
 params_anch = 15
 params_buildup = 2
 params_perturb = 3
-
 
 
 
@@ -98,7 +95,6 @@ def cost_sq_for_pos_samp(
 
     err = 0
 
-
     if not use_flex:
         # These are rotational errors
         #synthetic_motor_samp = pos_to_motor_pos_samples(anchors, pos, low_axis_max_force, use_flex, spool_r_in_origin=spool_r)
@@ -136,8 +132,10 @@ def cost_sq_for_pos_samp(
         line_lengths_when_at_origin_err = np.linalg.norm(anchors, 2, 1) - line_lengths_when_at_origin
         err += np.sum(abs(line_lengths_when_at_origin_err.dot(line_lengths_when_at_origin_err)))
 
-    if use_forces:
-        err += cost_from_forces(anchors, pos, force_samp, mover_weight, low_axis_max_force)
+
+    # use_forces = False
+    # if use_forces:
+    #     err += cost_from_forces(anchors, pos, force_samp, mover_weight, low_axis_max_force)
 
     if printit:
         synthetic_motor_samp = pos_to_motor_pos_samples(anchors, pos, low_axis_max_force, use_flex, spool_r_in_origin=spool_r)
@@ -476,81 +474,16 @@ def print_anch_err(sol_anch, anchors):
     print("Err_I_Z: %9.3f" % (float(sol_anch[I, Z]) - (anchors[I, Z])))
 
 
-class Store_as_array(argparse._StoreAction):
-    def __call__(self, parser, namespace, values, option_string=None):
-        values = np.array(values)
-        return super(Store_as_array, self).__call__(parser, namespace, values, option_string)
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Find best Hangprinter config based on true line lengths, line difference samples, and xyz positions if known."
     )
     parser.add_argument("-a", "--advanced", help="Use the advanced cost function", action="store_true")
     parser.add_argument("-d", "--debug", help="Print debug information", action="store_true")
-    parser.add_argument(
-        "-x",
-        "--xyz_of_samp",
-        help="Specify the XYZ-positions where samples were made as numbers separated by spaces.",
-        action=Store_as_array,
-        type=float,
-        nargs="+",
-        default=np.array([]),
-    )
-    parser.add_argument(
-        "-s",
-        "--sample_data",
-        help="Specify the sample data you have found as numbers separated by spaces.",
-        action=Store_as_array,
-        type=float,
-        nargs="+",
-        default=np.array([]),
-    )
-    parser.add_argument(
-        "-l",
-        "--line_lengths",
-        help="Specify the five line lenghts (A, B, C, D, and I) hand measured when nozzle is at the origin.",
-        action=Store_as_array,
-        type=float,
-        nargs="+",
-        default=np.array([]),
-    )
     args = vars(parser.parse_args())
 
     use_flex = args["advanced"]
-    use_line_lengths = args["advanced"]
-    #use_line_lengths = False
-
-    # Possibly overwrite hard-coded data with command line-provided data
-    xyz_of_samp_ = args["xyz_of_samp"]
-    if np.size(xyz_of_samp_) != 0:
-        if np.size(xyz_of_samp_) % 3 != 0:
-            print(
-                "Error: You specified %d numbers after your -x/--xyz_of_samp option, which is not a multiple of 3 numbers."
-            )
-            sys.exit(1)
-        xyz_of_samp = xyz_of_samp_.reshape((int(np.size(xyz_of_samp_) / 3), 3))
-
-    motor_pos_samp_ = args["sample_data"]
-    if np.size(motor_pos_samp_) != 0:
-        if np.size(motor_pos_samp_) % 5 != 0:
-            print("Please specify motor positions (angles) of sampling points.")
-            print(
-                "You specified %d numbers after your -s/--sample_data option, which is not a multiple of 5 number of numbers."
-                % (np.size(motor_pos_samp_))
-            )
-            sys.exit(1)
-        motor_pos_samp = motor_pos_samp_.reshape((int(np.size(motor_pos_samp_) / 5), 5))
-    line_lengths_when_at_origin_ = args["line_lengths"]
-    if np.size(line_lengths_when_at_origin_) != 0:
-        if np.size(line_lengths_when_at_origin_) != 5:
-            print("Please specify five measured line lengths.")
-            print(
-                "You specified %d numbers after your -l/--line_lengths option."
-                % (np.size(line_lengths_when_at_origin_))
-            )
-            sys.exit(1)
-        line_lengths_when_at_origin = line_lengths_when_at_origin_
+    use_line_lengths = True
 
     u = np.shape(motor_pos_samp)[0]
     ux = np.shape(xyz_of_samp)[0]
