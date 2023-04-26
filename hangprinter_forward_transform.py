@@ -19,15 +19,15 @@ def forward_transform(anchors, line_length_samp):
     anchors_tmp0 = anchors
     # Force the anchor location norms Ax=0, Dx=0, Dy=0
     # through a series of rotations.
-    x_angle = np.arctan(anchors[D][Y] / anchors[D][Z])
+    x_angle = np.arctan2(anchors[D][Y], anchors[D][Z])
     rxt = np.array([[1, 0, 0], [0, np.cos(x_angle), np.sin(x_angle)], [0, -np.sin(x_angle), np.cos(x_angle)]])
     anchors_tmp0 = np.matmul(anchors, rxt)
 
-    y_angle = np.arctan(-anchors_tmp0[D][X] / anchors_tmp0[D][Z])
+    y_angle = np.arctan2(-anchors_tmp0[D][X], anchors_tmp0[D][Z])
     ryt = np.array([[np.cos(y_angle), 0, -np.sin(y_angle)], [0, 1, 0], [np.sin(y_angle), 0, np.cos(y_angle)]])
     anchors_tmp1 = np.matmul(anchors_tmp0, ryt)
 
-    z_angle = np.arctan(anchors_tmp1[A][X] / anchors_tmp1[A][Y])
+    z_angle = np.arctan2(anchors_tmp1[A][X], anchors_tmp1[A][Y])
     rzt = np.array([[np.cos(z_angle), np.sin(z_angle), 0], [-np.sin(z_angle), np.cos(z_angle), 0], [0, 0, 1]])
     anchors_tmp0 = np.matmul(anchors_tmp1, rzt)
 
