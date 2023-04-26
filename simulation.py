@@ -15,6 +15,7 @@ import signal
 import time
 
 from hangprinter_forward_transform import forward_transform
+from hangprinter_forward_transform import forward_transform5
 from flex_distance import *
 from util import *
 from data import *
@@ -151,11 +152,20 @@ def cost_sq_for_pos_samp(
 
 
 def cost_sq_for_pos_samp_forward_transform(
-    anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r, line_lengths_when_at_origin, low_axis_max_force=1
+    anchors,
+    pos,
+    motor_pos_samp,
+    spool_buildup_factor,
+    spool_r,
+    line_lengths_when_at_origin,
+    use_flex,
+    use_line_lengths,
+    low_axis_max_force=1,
+    printit=False,
 ):
     line_lengths_when_at_origin_err = np.linalg.norm(anchors, 2, 1) - line_lengths_when_at_origin
     line_length_samp = np.zeros((np.size(motor_pos_samp, 0), 3))
-    if use_flex_errors:
+    if use_flex:
         line_length_samp = motor_pos_samples_to_distances_relative_to_origin(
             motor_pos_samp, spool_buildup_factor, spool_r
         ) - flex_distance(
@@ -174,22 +184,49 @@ def cost_sq_for_pos_samp_forward_transform(
 
     tot_err = 0
     for i in range(np.size(line_length_samp, 0)):
-        diff = pos[i] - forward_transform(anchors, line_length_samp[i])
+        diff = pos[i] - forward_transform5(anchors, line_length_samp[i])
         tot_err += diff.dot(diff)
 
     if use_line_lengths:
-        return tot_err + line_lengths_when_at_origin_err.dot(line_lengths_when_at_origin_err)
+        tot_err = tot_err + line_lengths_when_at_origin_err.dot(line_lengths_when_at_origin_err)
 
     return tot_err
 
 
 def cost_sq_for_pos_samp_combined(
-    anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r, line_lengths_when_at_origin, low_axis_max_force=1
+    anchors,
+    pos,
+    motor_pos_samp,
+    spool_buildup_factor,
+    spool_r,
+    line_lengths_when_at_origin,
+    use_flex,
+    use_line_lengths,
+    low_axis_max_force=1,
+    printit=False,
 ):
     return 10 * cost_sq_for_pos_samp_forward_transform(
-        anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r, line_lengths_when_at_origin, low_axis_max_force
+        anchors,
+        pos,
+        motor_pos_samp,
+        spool_buildup_factor,
+        spool_r,
+        line_lengths_when_at_origin,
+        use_flex,
+        use_line_lengths,
+        low_axis_max_force,
+        printit,
     ) + cost_sq_for_pos_samp(
-        anchors, pos, motor_pos_samp, spool_buildup_factor, spool_r, line_lengths_when_at_origin, low_axis_max_force
+        anchors,
+        pos,
+        motor_pos_samp,
+        spool_buildup_factor,
+        spool_r,
+        line_lengths_when_at_origin,
+        use_flex,
+        use_line_lengths,
+        low_axis_max_force,
+        printit,
     )
 
 
@@ -326,6 +363,8 @@ def costx(
     if u > ux:
         pos[ux:] = np.reshape(posvec, (u - ux, 3))
 
+    # return cost_sq_for_pos_samp_combined(
+    # return cost_sq_for_pos_samp_forward_transform(
     return cost_sq_for_pos_samp(
         anchors,
         pos + perturb,
@@ -585,6 +624,7 @@ if __name__ == "__main__":
             )
         else:
             pos = np.reshape([x for x in solution[params_anch : -(params_buildup + params_perturb + use_flex)]], (u, 3))
+        # return cost_sq_for_pos_samp_combined(
         # return cost_sq_for_pos_samp_forward_transform(
         return cost_sq_for_pos_samp(
             anch,
