@@ -228,16 +228,28 @@ def anchorsmatrix2vec(a):
     ]
 
 
+def anchorsmatrix2ang(a, r):
+    x = a[:, 0]
+    y = a[:, 1]
+    z = a[:, 2]
+
+    polar = np.arccos(z / r)
+    azimuth = np.arctan2(y, x)
+
+    # Interleave polar and azimuth angles
+    anchors_ang = np.empty((2 * len(polar),), dtype=polar.dtype)
+    anchors_ang[0::2] = polar
+    anchors_ang[1::2] = azimuth
+
+    return anchors_ang
+
+
 def posvec2matrix(v, u):
     return np.reshape(v, (u, 3))
 
 
 def posmatrix2vec(m):
     return np.reshape(m, np.shape(m)[0] * 3)
-
-
-def pre_list(l, num):
-    return np.append(np.append(l[0:params_anch], l[params_anch : params_anch + 3 * num]), l[-params_buildup:])
 
 
 def parallel_optimize(
