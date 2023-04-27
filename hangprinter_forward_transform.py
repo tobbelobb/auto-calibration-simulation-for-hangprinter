@@ -82,8 +82,12 @@ def forward_transform(anchors, line_length_samp):
     p2 = forward_transform_(anchors[(2, 3, 0, 4), :], line_length_samp[[2, 3, 0, 4]])
     p3 = forward_transform_(anchors[(3, 0, 1, 4), :], line_length_samp[[3, 0, 1, 4]])
 
-    return (p0 + p1 + p2 + p3) / 4.0
-    # return p2
+    p = (p0 + p1 + p2 + p3) / 4.0
+    ps = np.array([p0, p1, p2, p3])
+    diff = ps - p
+    spread = np.sum(diff*diff)
+
+    return p, spread
 
 
 # Doesn't do well when anchors B or C are exactly on the X-axis...
