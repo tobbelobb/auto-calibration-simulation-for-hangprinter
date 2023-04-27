@@ -163,7 +163,6 @@ def cost_sq_for_pos_samp_forward_transform(
     low_axis_max_force=1,
     printit=False,
 ):
-    line_lengths_when_at_origin_err = np.linalg.norm(anchors, 2, 1) - line_lengths_when_at_origin
     line_length_samp = np.zeros((np.size(motor_pos_samp, 0), 3))
     if use_flex:
         line_length_samp = motor_pos_samples_to_distances_relative_to_origin(
@@ -184,10 +183,13 @@ def cost_sq_for_pos_samp_forward_transform(
 
     tot_err = 0
     for i in range(np.size(line_length_samp, 0)):
-        diff = pos[i] - forward_transform5(anchors, line_length_samp[i])
+        new_pos, spread = forward_transform5(anchors, line_length_samp[i])
+        diff = pos[i] - new_pos
         tot_err += diff.dot(diff)
+        tot_err += spread
 
     if use_line_lengths:
+        line_lengths_when_at_origin_err = np.linalg.norm(anchors, 2, 1) - line_lengths_when_at_origin
         tot_err = tot_err + line_lengths_when_at_origin_err.dot(line_lengths_when_at_origin_err)
 
     return tot_err

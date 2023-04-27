@@ -10,15 +10,17 @@ Y = 1
 Z = 2
 
 
-def singular_3x3(matrix):
+def det(matrix):
     a, b, c = matrix[0]
     d, e, f = matrix[1]
     g, h, i = matrix[2]
 
-    det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g)
+    return a * (e * i - f * h) + b * (f * g - i * d) + c * (d * h - e * g)
 
-    threshold = 1e-9
-    return abs(det) < threshold
+
+def singular_3x3(matrix):
+    threshold = 1e-1
+    return abs(det(matrix)) < threshold
 
 
 def forward_transform5(anchors, line_length_samp):
@@ -35,24 +37,43 @@ def forward_transform5(anchors, line_length_samp):
     m3 = anch_prim[[1, 2, 3]]
 
     p = np.array([0.0, 0.0, 0.0])
+    ps = np.array([])
     c = 0
     if not singular_3x3(m0):
-        p += np.linalg.solve(m0, k[[0, 1, 2]])
+        p0 = np.linalg.solve(m0, k[[0, 1, 2]])
+        ps = np.append(ps, p0)
+        p += p0
         c += 1
     if not singular_3x3(m1):
-        p += np.linalg.solve(m1, k[[0, 1, 3]])
+        p1 = np.linalg.solve(m1, k[[0, 1, 3]])
+        ps = np.append(ps, p1)
+        p += p1
         c += 1
     if not singular_3x3(m2):
-        p += np.linalg.solve(m2, k[[0, 2, 3]])
+        p2 = np.linalg.solve(m2, k[[0, 2, 3]])
+        ps = np.append(ps, p2)
+        p += p2
         c += 1
     if not singular_3x3(m3):
-        p += np.linalg.solve(m3, k[[1, 2, 3]])
+        p3 = np.linalg.solve(m3, k[[1, 2, 3]])
+        ps = np.append(ps, p3)
+        p += p3
         c += 1
 
-    if c != 0.0:
+    spread = 0.0
+    if c != 0:
         p /= c
+        # p is a centroid point. However, since we have 5 lines, it's not for sure that we've gotten a valid set
+        # of line lenghts. Since we've computed 4 different points, we can measure how far they are apart.
+        # If they're all at the same point, then the line lengths were an entirely valid set of 5 points.
+        # The further apart our 4 different points are, the less valid the line lengths were.
+        # The spread tells the caller how many grains of salt they should interpret the returned p with.
+        ps = ps.reshape((c, 3))
+        diff = ps - p
+        spread = np.sum(diff*diff)
 
-    return p
+
+    return p, spread
 
 
 def forward_transform(anchors, line_length_samp):
