@@ -18,14 +18,42 @@ Note that this code assumes:
  - D-anchor has a negative x-coordinate and near-zero y-coordinate
  - I-anchor has a near-zero x-coordinate and near-zero y-coordinate
 
-## Dependencies
-Relies heavily on [numpy](https://github.com/numpy/numpy).
-It uses either [scipy](https://scipy.org/) or [mystic](https://github.com/uqfoundation/mystic) for the optimization algorithms.
 
+# Get started
 Here are the approximate names of packages you need if you're on Ubuntu:
 ```bash
-sudo apt-get install build-essential python-dev python-pip python-tk python-scipy python-numpy
+sudo apt-get install build-essential python-dev python-pip python-tk
 ```
+
+To avoid cluttering your python environment, it is recommended to always work in a python virtual environment. Installation is only done once, and activation is done everytime you start a new shell. the venv is installed in auto-calibration-simulation-for-hangprinter/.venv
+
+Install venv on MacOS / Linux
+
+    python3 -m venv .venv
+Install venv on Windows
+
+    python -m venv .venv
+
+Activate venv on MacOS / Linux
+
+    source .venv/bin/activate
+Activate venv on Windows
+
+    source .venv/Scripts/activate
+Install packages in the requirement list
+
+    pip install -r requirements.txt
+
+Verify the installed packages
+
+    pip list
+
+To exit the python environment
+
+    deactivate
+To completely remove the venv (deactivate it first)
+
+    rm -r .venv
 
 Once dependencies and data are in place, take the time to do
 ```bash

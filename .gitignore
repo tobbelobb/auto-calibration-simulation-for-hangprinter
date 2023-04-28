@@ -1,1 +1,7 @@
 __pycache__/
+
+# python virtual environment
+.venv/
+
+# vscode user specific settings
+.vscode/*

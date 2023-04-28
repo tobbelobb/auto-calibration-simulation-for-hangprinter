@@ -1,0 +1,2 @@
+numpy # Scientific python math tools
+scipy # Scientific python math tools
