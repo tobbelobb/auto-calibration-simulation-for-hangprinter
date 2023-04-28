@@ -5,3 +5,6 @@ __pycache__/
 
 # vscode user specific settings
 .vscode/*
+
+# python profiler output
+*.prof

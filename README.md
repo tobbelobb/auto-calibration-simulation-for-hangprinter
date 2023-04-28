@@ -248,3 +248,35 @@ For more on usage, try
 ```bash
 python ./simulation.py --help
 ```
+
+# Set up git pre-commit hook
+Make sure you have activated the venv, and everything on `requirement.txt` is installed
+Standing at the repo root level, run:
+
+    pre-commit install
+
+Now pre-commit will run automatically on git commit.
+
+If you for some reason don't want to run pre-commit during a commit, add `--no-verify` like:
+
+    git commit --no-verify
+
+# Open Project in VSCode
+Click the file `auto-calibration-simulation-for-hangprinter.code-workspace`. Or from VSCode, click File -> `Open Workspace from file...`. The settings in this file harmonizes with the pre-commit hook.
+
+# How to use black
+black will auto-format python code to a specific style, which makes the code more consistent.
+
+    black --line-length 120 <file or directory>
+# How to use python profiler
+Make sure you have activated the venv, and everything on `requirement.txt` is installed
+
+## Use cProfile to generate a profile of the python script of interest
+
+    python3 -m cProfile -o <dir/to/the/output/profile> <my_python_script.py>
+For example:
+
+    python3 -m cProfile -o ./tmp.prof ./python_simulator/main.py
+## Use snakeviz to visualize the generated profile on browser
+
+    snakeviz tmp.prof

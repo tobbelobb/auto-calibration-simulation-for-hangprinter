@@ -1,2 +1,8 @@
 numpy # Scientific python math tools
 scipy # Scientific python math tools
+snakeviz==2.1.1 # Required for visualizing code profiling
+black==22.10.0 # Python code formatting
+pre-commit==2.20.0 # Code check during commit
+pylint==2.15.8 # Python static code analysis
+isort==5.10.1 # Python import sorting
+mypy==1.0.0 # Python static type checking

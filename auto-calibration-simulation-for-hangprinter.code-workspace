@@ -1,0 +1,50 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"editor.formatOnSave": true,
+		"platformSettings.autoLoad": true,
+		"platformSettings.platforms": {
+			"linux": {
+				"nodes": {
+					"python.envFile": "${workspaceFolder}/.venv"
+				}
+			},
+			"win32": {
+				"nodes": {
+					"python.envFile": "${workspaceFolder}/.venv/Scripts"
+				}
+			}
+		},
+		"python.linting.enabled": true,
+		"python.linting.pylintEnabled": true,
+		"python.linting.pylintArgs": [
+			"--disable=missing-docstring,invalid-name,line-too-long,fixme,wrong-import-position,import-error,duplicate-code,logging-fstring-interpolation"
+		],
+		"python.formatting.provider": "black",
+		"[python]": {
+			"editor.rulers": [
+				120
+			],
+			"editor.defaultFormatter": "ms-python.black-formatter",
+			"editor.codeActionsOnSave": {
+				"source.organizeImports": true
+			},
+		},
+		"isort.check": true,
+		"isort.args": [
+			"--profile",
+			"black",
+			"--gitignore",
+			"-skip-gitignore"
+		],
+		"python.linting.mypyEnabled": true,
+		"mypy.runUsingActiveInterpreter": true,
+		"black-formatter.args": [
+			"--line-length 120"
+		],
+	}
+}
