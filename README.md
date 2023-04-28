@@ -18,25 +18,53 @@ Note that this code assumes:
  - D-anchor has a negative x-coordinate and near-zero y-coordinate
  - I-anchor has a near-zero x-coordinate and near-zero y-coordinate
 
-## Dependencies
-Relies heavily on [numpy](https://github.com/numpy/numpy).
-It uses either [scipy](https://scipy.org/) or [mystic](https://github.com/uqfoundation/mystic) for the optimization algorithms.
 
+# Installation
 Here are the approximate names of packages you need if you're on Ubuntu:
 ```bash
-sudo apt-get install build-essential python-dev python-pip python-tk python-scipy python-numpy
+sudo apt-get install build-essential python-dev python-pip python-tk
 ```
 
-Once dependencies and data are in place, take the time to do
-```bash
-./simulation.py --help
-```
+To avoid cluttering your python environment, it is recommended to always work in a python virtual environment. Installation is only done once, and activation is done everytime you start a new shell. the venv is installed in auto-calibration-simulation-for-hangprinter/.venv
 
-The default optimization runs with
+Install venv on MacOS / Linux
+
+    python3 -m venv .venv
+Install venv on Windows
+
+    python -m venv .venv
+
+Activate venv on MacOS / Linux
+
+    source .venv/bin/activate
+Activate venv on Windows
+
+    source .venv/Scripts/activate
+Install packages in the requirement list
+
+    pip install -r requirements.txt
+
+Verify the installed packages
+
+    pip list
+
+To exit the python environment
+
+    deactivate
+To completely remove the venv (deactivate it first)
+
+    rm -r .venv
+
+# Usage
+The default optimization on MacOS / Linux:
 ```bash
 ./simulation.py
 ```
 
+The default optimization on Windows:
+```bash
+python simulation.py
+```
 If it works it should finish in a few seconds.
 The output should look similar to
 ```
@@ -56,7 +84,7 @@ M666 Q0.068750 W2.00 S20000.00 U2:2:2:2:4 O1:1:1:1:1 L20:20:20:20:20 H255:255:25
 Note that these values are calculated from test data.
 They don't correspond to your Hangprinter setup (yet).
 
-## How to Collect Data Points?
+## Collect Data Points with hp-mark
 
 There's a script called `get_auto_calibration_data_automatically.sh` in the hp-mark repo that semi-automates the data collection.
 See https://gitlab.com/tobben/hp-mark/-/tree/master/use.
@@ -85,7 +113,7 @@ For the ~40 last data collection points, make them as random and spread out as y
 The `get_auto_calibration_data_automatically.sh` script will spit out your calibration data for you in the end, in the right order and with the right names to paste
 directly into `simulation.py`. Remember to delete the ~40 last `xyz_of_samp` though (unless you reeeeally trust your hp-mark setup a lot).
 
-### What if I can't run hp-mark?
+## Collect Data Points without hp-mark
 
 Then `simulation.py` can still be used without `get_auto_calibration_data_automatically.sh`, but it takes a bit more of manual labour to collect the data.
 
@@ -220,3 +248,35 @@ For more on usage, try
 ```bash
 python ./simulation.py --help
 ```
+
+# For developers
+## Set up git pre-commit hook
+Make sure you have activated the venv, and everything on `requirement.txt` is installed. Standing at the repo root level, run:
+
+    pre-commit install
+
+Now pre-commit will run automatically on git commit. To run pre-commit without committing, run:
+
+    pre-commit
+
+If you for some reason don't want to run pre-commit during a commit, add `--no-verify` like:
+
+    git commit --no-verify
+
+## Open Project in VSCode
+Click the file `auto-calibration-simulation-for-hangprinter.code-workspace`. Or from VSCode, click File -> `Open Workspace from file...`. The settings in this file harmonizes with the pre-commit hook.
+
+## Run black
+black will auto-format python code to a specific style, which makes the code more consistent.
+
+    black --line-length 120 <file or directory>
+## Run python profiler
+Make sure you have activated the venv, and everything on `requirement.txt` is installed. Use cProfile to generate a profile of the python script of interest
+
+    python3 -m cProfile -o <dir/to/the/output/profile> <my_python_script.py>
+For example:
+
+    python3 -m cProfile -o ./tmp.prof ./simulation.py
+Now use snakeviz to visualize the profiling report:
+
+    snakeviz tmp.prof
