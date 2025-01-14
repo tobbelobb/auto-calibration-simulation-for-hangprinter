@@ -1,7 +1,7 @@
 import numpy as np
 
 # Config values should be based on your physical machine
-constant_spool_buildup_factor = 0.006875 * 10  # Qualified first guess for 1.1 mm line
+constant_spool_buildup_factor = 0.0043003 * 10  # Qualified first guess for 0.87 mm line
 spool_r_in_origin_first_guess = np.array([75.0, 75.0, 75.0, 75.0, 75.0])
 spool_gear_teeth = 255
 motor_gear_teeth = 20
