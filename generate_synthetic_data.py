@@ -119,7 +119,7 @@ def _synthesize(entry: Dict[str, Any]) -> Dict[str, Any]:
     if guy_wires is not None:
         guy_wires = _expand(guy_wires, np.zeros(anchors.shape[0]), anchors.shape[0], "guy_wire_lengths")
 
-    use_flex = bool(cfg.get("use_flex", False))
+    use_flex = bool(cfg.get("use_flex", True))
     ignore_gravity = bool(cfg.get("ignore_gravity", False))
     ignore_pretension = bool(cfg.get("ignore_pretension", False))
 

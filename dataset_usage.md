@@ -14,7 +14,7 @@ Each `.jsonl` file has one JSON object per line:
 - `motor_samples`: generated motor positions in degrees (360° per rotation), matching `real_xyz` order; five columns for HP5, etc. Empty in intermediate files.
 
 Scenarios mapped to the suggested comparison suite:
-- Clean baseline → suite #1 (no noise/flex); HP5 positions mirror `simulation_data_for_hangprinter_forward_transform.py`; Slideprinter is Z=0 projection of those points.
+- Clean baseline → suite #1 (no noise, flex enabled); HP5 positions mirror `simulation_data_for_hangprinter_forward_transform.py`; Slideprinter is Z=0 projection of those points.
 - Larger baseline → suite #2 (3 anchor sets per geometry, 10 random poses each; ≥1000×1000 mm reach).
 - Near/At/Outside singularities → suite #6 boundary stress: HP5/Slideprinter points projected radially to the reachable boundary (−0.1 mm inside, exactly on, +0.1 mm outside). Spidercam/CubeCorners use rectangle footprints similarly.
 - Systematic bias → suite #4 pretension variant (min_force=50).
@@ -24,7 +24,7 @@ Practical hints for the C++ forward-transform tests:
 - Inputs are degrees, not steps; convert if your harness assumes steps (gear ratio 255/20, mechAdv HP5 default [2,2,2,2,4]). For non-HP5 geometries, check the anchor count and use the corresponding motor column count.
 - Each line is standalone JSON; your loader can stream line by line. The JSON is compact (no extra spacing), and keys stay in the order written by the generator (`dataset`, `geometry`, `anchor_set`, `anchors`, `real_xyz`, `config`, `motor_samples`).
 - To add noise or biases, perturb `motor_samples` or derived lengths in your test harness (e.g., Gaussian σ=1–5 mm on lengths, per-line constant offset for bias, 2–5% mislength for infeasible mixes, quantize to encoder resolution).
-- Flex is disabled in these datasets; enable it in your harness if you need suite #9 (re-run generation with `config.use_flex=true` and appropriate forces/radii).
+- Flex is enabled in these datasets (generation default `use_flex=true`); if you need non-flex variants, re-run generation with `config.use_flex=false`.
 - Anchor set 0 is the canonical geometry per type; sets 1 and 2 (only in `larger_baseline`) are larger/smaller variants to test generality.
 
 Regenerating:
