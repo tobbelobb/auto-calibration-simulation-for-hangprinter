@@ -22,10 +22,15 @@ Values placed under "config" (all optional):
   - use_flex (bool)
   - ignore_gravity (bool)
   - ignore_pretension (bool)
+  - lambda_reg
+  - tol
+  - max_iters_target
+  - g
 
 Outputs the same JSONL file shape, with "motor_samples" populated as
 rotations in degrees (360 deg per full rotation), aligned with the
-order of "real_xyz".
+order of "real_xyz". A "config_used" block is added, showing the full
+resolved parameters passed to pos_to_motor_pos_samples.
 """
 
 import argparse
@@ -49,6 +54,10 @@ from util import pos_to_motor_pos_samples
 
 DEFAULT_MIN_FORCE = 3.0
 DEFAULT_MAX_FORCE = 120.0
+DEFAULT_LAMBDA_REG = 1e-3
+DEFAULT_TOL = 1e-3
+DEFAULT_MAX_ITERS_TARGET = 100
+DEFAULT_G = 9.81
 
 
 def _expand(
@@ -88,6 +97,19 @@ def _normalize_force(value: Any, default: float, count: int, name: str) -> Optio
     return _expand(value, np.array([value], dtype=float), count, name)
 
 
+def _jsonify_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert numpy values to JSON-friendly types."""
+    out: Dict[str, Any] = {}
+    for key, value in cfg.items():
+        if isinstance(value, np.ndarray):
+            out[key] = value.tolist()
+        elif isinstance(value, np.generic):
+            out[key] = value.item()
+        else:
+            out[key] = value
+    return out
+
+
 def _load_lines(path: Path) -> Iterable[str]:
     with path.open("r", encoding="utf-8") as fh:
         for line in fh:
@@ -104,13 +126,13 @@ def _synthesize(entry: Dict[str, Any]) -> Dict[str, Any]:
     if poses.ndim != 2 or poses.shape[1] != 3:
         raise ValueError("real_xyz must be an (M, 3) array")
 
-    cfg = entry.get("config", {})
-    spool_buildup = cfg.get("spool_buildup_factor", constant_spool_buildup_factor)
+    cfg = dict(entry.get("config", {}))
+    spool_buildup = float(cfg.get("spool_buildup_factor", constant_spool_buildup_factor))
     spool_r = _expand(cfg.get("spool_r"), spool_r_in_origin_first_guess, anchors.shape[0], "spool_r")
 
-    spool_to_motor = float(cfg.get("spool_gear_teeth", spool_gear_teeth)) / float(
-        cfg.get("motor_gear_teeth", motor_gear_teeth)
-    )
+    spool_gear = float(cfg.get("spool_gear_teeth", spool_gear_teeth))
+    motor_gear = float(cfg.get("motor_gear_teeth", motor_gear_teeth))
+    spool_to_motor = float(spool_gear) / float(motor_gear)
     mech_adv = _expand(cfg.get("mechanical_advantage"), mechanical_advantage, anchors.shape[0], "mechanical_advantage")
     lines = _expand(cfg.get("lines_per_spool"), lines_per_spool, anchors.shape[0], "lines_per_spool")
     min_force = _normalize_force(cfg.get("min_force"), DEFAULT_MIN_FORCE, anchors.shape[0], "min_force")
@@ -122,6 +144,13 @@ def _synthesize(entry: Dict[str, Any]) -> Dict[str, Any]:
     use_flex = bool(cfg.get("use_flex", True))
     ignore_gravity = bool(cfg.get("ignore_gravity", False))
     ignore_pretension = bool(cfg.get("ignore_pretension", False))
+    lambda_reg = float(cfg.get("lambda_reg", DEFAULT_LAMBDA_REG))
+    tol = float(cfg.get("tol", DEFAULT_TOL))
+    max_iters_target = int(cfg.get("max_iters_target", DEFAULT_MAX_ITERS_TARGET))
+    g = float(cfg.get("g", DEFAULT_G))
+
+    spring_k = float(cfg.get("spring_k_per_unit_length", springKPerUnitLength))
+    mover_w = float(cfg.get("mover_weight", mover_weight))
 
     motor_samples = pos_to_motor_pos_samples(
         anchors,
@@ -134,14 +163,41 @@ def _synthesize(entry: Dict[str, Any]) -> Dict[str, Any]:
         mech_adv_=mech_adv,
         lines_per_spool_=lines,
         min_force=min_force,
-        spring_k_per_unit_length=cfg.get("spring_k_per_unit_length", springKPerUnitLength),
-        mover_weight=cfg.get("mover_weight", mover_weight),
+        spring_k_per_unit_length=spring_k,
+        mover_weight=mover_w,
         ignore_gravity=ignore_gravity,
         ignore_pretension=ignore_pretension,
+        lambda_reg=lambda_reg,
+        tol=tol,
+        max_iters_target=max_iters_target,
+        g=g,
         guy_wire_lengths=guy_wires,
     )
 
     entry["motor_samples"] = motor_samples.tolist()
+    entry["config_used"] = _jsonify_config(
+        {
+            "spool_buildup_factor": spool_buildup,
+            "spool_r_in_origin": spool_r,
+            "spool_gear_teeth": spool_gear,
+            "motor_gear_teeth": motor_gear,
+            "spool_to_motor_gearing_factor": spool_to_motor,
+            "mechanical_advantage": mech_adv,
+            "lines_per_spool": lines,
+            "min_force": min_force,
+            "max_force": max_force,
+            "spring_k_per_unit_length": spring_k,
+            "mover_weight": mover_w,
+            "use_flex": use_flex,
+            "ignore_gravity": ignore_gravity,
+            "ignore_pretension": ignore_pretension,
+            "lambda_reg": lambda_reg,
+            "tol": tol,
+            "max_iters_target": max_iters_target,
+            "g": g,
+            "guy_wire_lengths": guy_wires,
+        }
+    )
     return entry
 
 
