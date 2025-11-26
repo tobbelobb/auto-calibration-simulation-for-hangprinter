@@ -11,153 +11,261 @@ Y = 1
 Z = 2
 
 
-def unit_vectors_along_force(anch_to_pos, distances):
-    direction_vectors_for_each_position = np.ones(
-        (np.size(anch_to_pos, 0), np.size(anch_to_pos, 2), np.size(anch_to_pos, 1))
-    )
-    if (abs(distances) > 0).all():
-        direction_vectors_for_each_position = np.transpose(
-            np.divide(anch_to_pos, distances[:, :, np.newaxis]), (0, 2, 1)
-        )
-    return direction_vectors_for_each_position
+def _normalize_force_array(force, num_anchors, default_value):
+    """Broadcast scalars/None to a per-anchor array."""
+    if force is None:
+        return np.full(num_anchors, default_value, dtype=float)
+    arr = np.asarray(force, dtype=float).reshape(-1)
+    if arr.size == 1:
+        arr = np.full(num_anchors, float(arr), dtype=float)
+    if arr.shape[0] != num_anchors:
+        raise ValueError(f"Expected {num_anchors} entries, got {arr.shape[0]}")
+    return arr
 
 
-def forces_gravity_and_pretension(low_axis_max_force, low_axis_target_force, anch_to_pos, distances, mover_weight):
-    mg = 9.81 * mover_weight
+def _build_direction_matrix(anchors, mover):
+    """Return a 3xN matrix of unit direction vectors from mover to anchors."""
+    num_anchors = anchors.shape[0]
+    A_mat = np.zeros((3, num_anchors), dtype=float)
+    for j in range(num_anchors):
+        diff = anchors[j] - mover
+        nrm = np.linalg.norm(diff)
+        if nrm > 0.0:
+            diff = diff / nrm
+        else:
+            diff = np.zeros(3, dtype=float)
+        A_mat[:, j] = diff
+    return A_mat
 
-    force_directions = unit_vectors_along_force(anch_to_pos, distances)
 
-    # Avoid division by zero
-    threshold = 1e-8
-    force_directions_z_safe = np.where(
-        np.abs(force_directions[:, 2, 4]) > threshold, force_directions[:, 2, 4], threshold
-    )
+def _apply_A(A_mat, tensions):
+    """Multiply direction matrix with tensions to get achieved force."""
+    return A_mat @ tensions
 
-    top_mg = mg / force_directions_z_safe
-    BCD_matrices = force_directions[:, :, (B, C, D)]
-    ACD_matrices = force_directions[:, :, (A, C, D)]
-    ABD_matrices = force_directions[:, :, (A, B, D)]
-    ABC_matrices = force_directions[:, :, (A, B, C)]
 
-    # Scale the top-direction vectors by the target_force
-    top_pre = low_axis_target_force * force_directions[:, :, 4]
-    top_grav = np.c_[force_directions[:, :3, 4] * top_mg[:, np.newaxis]] + np.array([0, 0, -mg])
+def _solve_box_ridge_ls(A_mat, requested_force, lambda_reg, L, U, max_iters, tol):
+    """
+    Solve: min 0.5||A t - F||^2 + 0.5*lambda||t||^2 s.t. L <= t <= U
+    Using a small active-set method mirroring the C++ reference.
+    """
+    A_mat = np.asarray(A_mat, dtype=float)
+    requested_force = np.asarray(requested_force, dtype=float)
+    num_anchors = A_mat.shape[1]
 
-    # Find the ABCD forces needed to cancel out target_force in top-direction
-    BCD_forces_pre = np.zeros((np.size(distances, 0), 4))
-    BCD_forces_grav = np.zeros((np.size(distances, 0), 4))
-    ACD_forces_pre = np.zeros((np.size(distances, 0), 4))
-    ACD_forces_grav = np.zeros((np.size(distances, 0), 4))
-    ABD_forces_pre = np.zeros((np.size(distances, 0), 4))
-    ABD_forces_grav = np.zeros((np.size(distances, 0), 4))
-    ABC_forces_pre = np.zeros((np.size(distances, 0), 4))
-    ABC_forces_grav = np.zeros((np.size(distances, 0), 4))
+    H = A_mat.T @ A_mat
+    H.flat[:: num_anchors + 1] += lambda_reg
+    f = A_mat.T @ requested_force
+
     try:
-        BCD_forces_pre[:, (B, C, D)] = np.linalg.solve(BCD_matrices, -top_pre)
-        BCD_forces_grav[:, (B, C, D)] = np.linalg.solve(BCD_matrices, -top_grav)
-        ACD_forces_pre[:, (A, C, D)] = np.linalg.solve(ACD_matrices, -top_pre)
-        ACD_forces_grav[:, (A, C, D)] = np.linalg.solve(ACD_matrices, -top_grav)
-        ABD_forces_pre[:, (A, B, D)] = np.linalg.solve(ABD_matrices, -top_pre)
-        ABD_forces_grav[:, (A, B, D)] = np.linalg.solve(ABD_matrices, -top_grav)
-        ABC_forces_pre[:, (A, B, C)] = np.linalg.solve(ABC_matrices, -top_pre)
-        ABC_forces_grav[:, (A, B, C)] = np.linalg.solve(ABC_matrices, -top_grav)
-    except:
-        pass
+        t = np.linalg.solve(H, f)
+    except np.linalg.LinAlgError:
+        t = np.zeros(num_anchors, dtype=float)
+    t = np.clip(t, L, U)
 
-    # Just avoid dividing by zero
-    threshold = 1e-8
-    BCD_norms = np.linalg.norm(BCD_forces_pre, axis=1)[:, np.newaxis]
-    BCD_norms = np.where(BCD_norms > threshold, BCD_norms, threshold)
-    ACD_norms = np.linalg.norm(ACD_forces_pre, axis=1)[:, np.newaxis]
-    ACD_norms = np.where(ACD_norms > threshold, ACD_norms, threshold)
-    ABD_norms = np.linalg.norm(ABD_forces_pre, axis=1)[:, np.newaxis]
-    ABD_norms = np.where(ABD_norms > threshold, ABD_norms, threshold)
-    ABC_norms = np.linalg.norm(ABC_forces_pre, axis=1)[:, np.newaxis]
-    ABC_norms = np.where(ABC_norms > threshold, ABC_norms, threshold)
+    for _ in range(max_iters):
+        g = H @ t - f
 
-    BCD_forces_pre = low_axis_target_force * BCD_forces_pre / BCD_norms
-    ACD_forces_pre = low_axis_target_force * ACD_forces_pre / ACD_norms
-    ABD_forces_pre = low_axis_target_force * ABD_forces_pre / ABD_norms
-    ABC_forces_pre = low_axis_target_force * ABC_forces_pre / ABC_norms
-    BCD_forces_grav = BCD_forces_grav / 4.0
-    ACD_forces_grav = ACD_forces_grav / 4.0
-    ABD_forces_grav = ABD_forces_grav / 4.0
-    ABC_forces_grav = ABC_forces_grav / 4.0
+        # Projected gradient norm for convergence check
+        pgn_sq = 0.0
+        for i in range(num_anchors):
+            gi = g[i]
+            atL = t[i] <= L[i] + 1e-12
+            atU = t[i] >= U[i] - 1e-12
+            if (atL and gi > 0.0) or (atU and gi < 0.0):
+                gi = 0.0
+            pgn_sq += gi * gi
+        if np.sqrt(pgn_sq) <= tol:
+            break
 
-    p = BCD_forces_pre + ACD_forces_pre + ABD_forces_pre + ABC_forces_pre
-    m = BCD_forces_grav + ACD_forces_grav + ABD_forces_grav + ABC_forces_grav
-    forces = [p, np.linalg.norm(top_pre, axis=1), m, np.linalg.norm(top_grav, axis=1)]
+        free_idx = []
+        for i in range(num_anchors):
+            atL = t[i] <= L[i] + 1e-12
+            atU = t[i] >= U[i] - 1e-12
+            violateL = atL and g[i] < -tol
+            violateU = atU and g[i] > tol
+            if (not atL and not atU) or violateL or violateU:
+                free_idx.append(i)
 
-    return forces
+        if not free_idx:
+            best = -1.0
+            free_idx.append(0)
+            for i in range(num_anchors):
+                atL = t[i] <= L[i] + 1e-12
+                atU = t[i] >= U[i] - 1e-12
+                viol = 0.0
+                if atL:
+                    viol = max(viol, -g[i])
+                if atU:
+                    viol = max(viol, g[i])
+                if viol > best:
+                    best = viol
+                    free_idx[0] = i
+
+        Hff = H[np.ix_(free_idx, free_idx)]
+        gf = g[free_idx]
+        try:
+            pf = np.linalg.solve(Hff, -gf)
+        except np.linalg.LinAlgError:
+            pf = np.zeros_like(gf)
+
+        alpha = 1.0
+        for local_idx, anchor_idx in enumerate(free_idx):
+            pi = pf[local_idx]
+            if abs(pi) < 1e-16:
+                continue
+            if pi > 0.0:
+                amax = (U[anchor_idx] - t[anchor_idx]) / pi
+            else:
+                amax = (L[anchor_idx] - t[anchor_idx]) / pi
+            if amax < alpha:
+                alpha = max(0.0, amax)
+
+        t[free_idx] += alpha * pf
+        t = np.clip(t, L, U)
+
+    return t
 
 
-def forces_gravity_and_pretension_scaled(
-    low_axis_max_force, low_axis_target_force, anch_to_pos, distances, mover_weight
+def static_forces_qp(
+    anchors,
+    mover,
+    min_force=None,
+    max_force=None,
+    *,
+    ignore_gravity=False,
+    ignore_pretension=False,
+    mass_kg=0.0,
+    g=9.81,
+    lambda_reg=1e-3,
+    tol=1e-3,
+    max_iters_target=100,
 ):
+    """Compute per-line tensions using the QP solver from the reference firmware."""
+    anchors = np.asarray(anchors, dtype=float)
+    mover = np.asarray(mover, dtype=float)
+    if anchors.ndim != 2 or anchors.shape[1] != 3:
+        raise ValueError("anchors must be an (N, 3) array")
+    if mover.shape != (3,):
+        mover = mover.reshape(3)
+    num_anchors = anchors.shape[0]
 
-    [low_forces_pre, top_forces_pre, low_forces_grav, top_forces_grav] = forces_gravity_and_pretension(
-        low_axis_max_force, low_axis_target_force, anch_to_pos, distances, mover_weight
+    max_force_arr = _normalize_force_array(max_force, num_anchors, np.inf)
+    if min_force is None:
+        if np.all(np.isinf(max_force_arr)):
+            min_force_arr = np.zeros(num_anchors, dtype=float)
+        else:
+            min_force_arr = np.maximum(max_force_arr - 1.0, 0.0001)
+    else:
+        min_force_arr = _normalize_force_array(min_force, num_anchors, 0.0)
+
+    if ignore_pretension:
+        min_force_arr = np.zeros(num_anchors, dtype=float)
+
+    max_force_arr = np.maximum(max_force_arr, min_force_arr)
+
+    direction_matrix = _build_direction_matrix(anchors, mover)
+    requested_force = np.array([0.0, 0.0, 0.0], dtype=float)
+    if not ignore_gravity:
+        requested_force[2] = mass_kg * g
+
+    tensions = _solve_box_ridge_ls(
+        direction_matrix,
+        requested_force,
+        lambda_reg,
+        min_force_arr,
+        max_force_arr,
+        max_iters_target,
+        tol,
     )
 
-    # Avoid division by zero
-    threshold = 1e-8
-    pre = np.c_[low_forces_pre, top_forces_pre]
-    pre_safe = np.where(pre > threshold, pre, threshold)
+    achieved_force = _apply_A(direction_matrix, tensions)
+    residual = requested_force - achieved_force
+    supported_gravity_frac = 0.0
+    if not ignore_gravity and requested_force[2] > 1e-9:
+        supported_gravity_frac = achieved_force[2] / requested_force[2]
 
-    # Make ABC_axes pull with exactly max force, or less
-    scale_it = np.min(
-        np.c_[
-            np.max(
-                abs((low_axis_target_force - np.c_[low_forces_grav, top_forces_grav]) / pre_safe),
-                1,
-            ),
-            np.min(
-                np.abs((low_axis_max_force - np.c_[low_forces_grav, top_forces_grav]) / pre_safe),
-                1,
-            ),
-        ],
-        1,
-    )
-
-    low_forces_pre = low_forces_pre * scale_it[:, np.newaxis]
-    top_forces_pre = top_forces_pre * scale_it
-
-    forces = np.c_[low_forces_pre + low_forces_grav, top_forces_pre + top_forces_grav]
-    # forces = np.c_[low_forces_grav, top_forces_grav]
-    # forces = np.c_[low_forces_pre, top_forces_pre]
-    # forces = np.clip(forces, 0, np.max(forces))
-
-    return forces
+    return {
+        "tensions": tensions,
+        "achieved_force": achieved_force,
+        "requested_force": requested_force,
+        "residual": residual,
+        "supported_gravity_frac": supported_gravity_frac,
+    }
 
 
 def flex_distance(
-    low_axis_max_force, low_axis_target_force, anchors, pos, mechanical_advantage, springKPerUnitLength, mover_weight
+    anchors,
+    pos,
+    mechanical_advantage,
+    springKPerUnitLength,
+    mover_weight,
+    min_force=None,
+    max_force=None,
+    *,
+    ignore_gravity=False,
+    ignore_pretension=False,
+    lambda_reg=1e-3,
+    tol=1e-3,
+    max_iters_target=100,
+    g=9.81,
+    guy_wire_lengths=None,
 ):
-    guyWireLengths = np.array(
-        [
-            np.linalg.norm(anchors[A] - anchors[I]),
-            np.linalg.norm(anchors[B] - anchors[I]),
-            np.linalg.norm(anchors[C] - anchors[I]),
-            np.linalg.norm(anchors[D] - anchors[I]),
-            100.0,
-        ]
+    """
+    Return flex compensation distances relative to the origin.
+
+    The returned value can be added to geometric line deltas to get relaxed
+    line lengths, matching the firmware's QP-based solver.
+    """
+    anchors = np.asarray(anchors, dtype=float)
+    if anchors.ndim != 2 or anchors.shape[1] != 3:
+        raise ValueError("anchors must be an (N, 3) array")
+    pos = np.asarray(pos, dtype=float)
+    if pos.ndim == 1:
+        pos = pos.reshape(1, 3)
+    mech_adv = np.asarray(mechanical_advantage, dtype=float)
+    num_anchors = anchors.shape[0]
+    if mech_adv.shape[0] != num_anchors:
+        raise ValueError(f"Expected {num_anchors} mechanical advantage entries, got {mech_adv.shape[0]}")
+    mech_adv_safe = np.maximum(mech_adv, 1e-9)
+    guy_wire_lengths = (
+        np.zeros(num_anchors, dtype=float)
+        if guy_wire_lengths is None
+        else _normalize_force_array(guy_wire_lengths, num_anchors, 0.0)
     )
-    # Insert the origin as the first position always
-    # It will be used for computing relative effects of flex later
-    pos_w_origin = np.r_[[[0.0, 0.0, 0.0]], pos]
-    anch_to_pos = anchors - pos_w_origin[:, np.newaxis, :]
-    distances = np.linalg.norm(anch_to_pos, 2, 2)
 
-    forces = forces_gravity_and_pretension_scaled(
-        low_axis_max_force, low_axis_target_force, anch_to_pos, distances, mover_weight
-    )
+    max_force_arr = _normalize_force_array(max_force, num_anchors, np.inf)
+    if min_force is None:
+        if np.all(np.isinf(max_force_arr)):
+            min_force_arr = np.zeros(num_anchors, dtype=float)
+        else:
+            min_force_arr = np.maximum(max_force_arr - 1.0, 0.0001)
+    else:
+        min_force_arr = _normalize_force_array(min_force, num_anchors, 0.0)
 
-    springKs = springKPerUnitLength / (distances * mechanical_advantage + guyWireLengths)
-    relaxed_spring_lengths = distances - forces / (springKs * mechanical_advantage)
+    positions = np.vstack(([0.0, 0.0, 0.0], pos))
+    flex_values = np.zeros((positions.shape[0], num_anchors), dtype=float)
 
-    line_pos = relaxed_spring_lengths - relaxed_spring_lengths[0]
+    for idx, p in enumerate(positions):
+        distances = np.linalg.norm(anchors - p, axis=1)
+        spring_lengths = distances * mech_adv_safe + guy_wire_lengths
+        safe_lengths = np.maximum(spring_lengths, 1e-9)
+        springKs = springKPerUnitLength / safe_lengths
+        springKs = np.maximum(springKs, 1e-9)
 
-    distance_differences = distances - distances[0]
-    impact_of_spring_model = line_pos - distance_differences
+        forces = static_forces_qp(
+            anchors,
+            p,
+            min_force_arr,
+            max_force_arr,
+            ignore_gravity=ignore_gravity,
+            ignore_pretension=ignore_pretension,
+            mass_kg=mover_weight,
+            g=g,
+            lambda_reg=lambda_reg,
+            tol=tol,
+            max_iters_target=max_iters_target,
+        )["tensions"]
 
-    return impact_of_spring_model[1:]
+        flex_values[idx] = forces / (springKs * mech_adv_safe)
+
+    return flex_values[0] - flex_values[1:]

@@ -47,25 +47,30 @@ params_perturb = 3
 
 
 def cost_from_forces(anchors, pos, force_samps, mover_weight, low_axis_max_force):
+    min_force = np.maximum(low_axis_max_force - 1, 0.0001)
+    synthetic_forces = []
+    for p in pos:
+        res = static_forces_qp(
+            anchors,
+            p,
+            min_force,
+            low_axis_max_force,
+            mass_kg=mover_weight,
+        )
+        synthetic_forces.append(res["tensions"])
 
-    pos_w_origin = np.r_[[[0.0, 0.0, 0.0]], pos]
-    anch_to_pos = anchors - pos_w_origin[:, np.newaxis, :]
-    distances = np.linalg.norm(anch_to_pos, 2, 2)
-    [low_forces_pre, top_forces_pre, low_forces_grav, top_forces_grav] = forces_gravity_and_pretension(
-        low_axis_max_force, np.max(np.array([low_axis_max_force - 1, 0])), anch_to_pos, distances, mover_weight
-    )
+    synthetic_forces = np.asarray(synthetic_forces)
 
-    synthetic_forces_pre = np.c_[low_forces_pre, top_forces_pre][1:]
-    synthetic_forces_grav = np.c_[low_forces_grav, top_forces_grav][1:]
+    # Normalize; we don't care about pretension sizes
+    def _safe_normalize(arr):
+        norms = np.linalg.norm(arr, axis=1, keepdims=True)
+        norms = np.where(norms > 1e-9, norms, 1.0)
+        return arr / norms
 
-    # Remove gravity related forces from force_samp
-    force_samps_pre = force_samps - synthetic_forces_grav
+    synthetic_forces_pre = _safe_normalize(synthetic_forces)
+    force_samps_pre = _safe_normalize(force_samps)
 
-    # Normalize. we don't care about pretension force sizes
-    synthetic_forces_pre = synthetic_forces_pre / np.linalg.norm(synthetic_forces_pre, 2, 1)[:, np.newaxis]
-    force_samps_pre = force_samps_pre / np.linalg.norm(force_samps_pre, 2, 1)[:, np.newaxis]
-
-    return np.sum(pow(synthetic_forces_pre - force_samps_pre, 2)) * 1000.0
+    return np.sum((synthetic_forces_pre - force_samps_pre) ** 2) * 1000.0
 
 
 def cost_sq_for_pos_samp(
@@ -94,6 +99,8 @@ def cost_sq_for_pos_samp(
 
     err = 0
 
+    min_force = np.maximum(low_axis_max_force - 1, 0.0001)
+
     if not use_flex:
         # These are rotational errors
         # synthetic_motor_samp = pos_to_motor_pos_samples(anchors, pos, low_axis_max_force, use_flex, spool_r_in_origin=spool_r)
@@ -110,7 +117,14 @@ def cost_sq_for_pos_samp(
     if use_flex:
         # Implies use_rotational_errors
         synthetic_motor_samp = pos_to_motor_pos_samples(
-            anchors, pos, low_axis_max_force, use_flex, spool_r_in_origin=spool_r
+            anchors,
+            pos,
+            low_axis_max_force,
+            use_flex,
+            spool_r_in_origin=spool_r,
+            min_force=min_force,
+            spring_k_per_unit_length=springKPerUnitLength,
+            mover_weight=mover_weight,
         )
         err += np.sum(np.sqrt(np.sum(pow((synthetic_motor_samp - motor_pos_samp) / mechanical_advantage, 2))))
         # Add error due to flex
@@ -120,13 +134,13 @@ def cost_sq_for_pos_samp(
                 - (
                     motor_pos_samples_to_distances_relative_to_origin(motor_pos_samp, spool_buildup_factor, spool_r)
                     - flex_distance(
-                        low_axis_max_force,
-                        np.max(np.array([low_axis_max_force - 1, 0.0001])),
                         anchors,
                         pos,
                         mechanical_advantage,
                         springKPerUnitLength,
                         mover_weight,
+                        min_force=min_force,
+                        max_force=low_axis_max_force,
                     )
                 ),
                 2,
@@ -143,7 +157,14 @@ def cost_sq_for_pos_samp(
 
     if printit:
         synthetic_motor_samp = pos_to_motor_pos_samples(
-            anchors, pos, low_axis_max_force, use_flex, spool_r_in_origin=spool_r
+            anchors,
+            pos,
+            low_axis_max_force,
+            use_flex,
+            spool_r_in_origin=spool_r,
+            min_force=min_force,
+            spring_k_per_unit_length=springKPerUnitLength,
+            mover_weight=mover_weight,
         )
         print("Rotational errors:")
         print((synthetic_motor_samp - motor_pos_samp) / mechanical_advantage)
@@ -164,17 +185,18 @@ def cost_sq_for_pos_samp_forward_transform(
     printit=False,
 ):
     line_length_samp = np.zeros((np.size(motor_pos_samp, 0), 3))
+    min_force = np.maximum(low_axis_max_force - 1, 0.0001)
     if use_flex:
         line_length_samp = motor_pos_samples_to_distances_relative_to_origin(
             motor_pos_samp, spool_buildup_factor, spool_r
         ) - flex_distance(
-            low_axis_max_force,
-            np.max(np.array([low_axis_max_force - 1, 0.0001])),
             anchors,
             pos,
             mechanical_advantage,
             springKPerUnitLength,
             mover_weight,
+            min_force=min_force,
+            max_force=low_axis_max_force,
         )
     else:
         line_length_samp = motor_pos_samples_to_distances_relative_to_origin(

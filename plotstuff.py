@@ -3,60 +3,82 @@
 from __future__ import division
 import numpy as np
 
-from flex_distance import *
-from simulation import *
+from flex_distance import static_forces_qp
 
-from mpl_toolkits.mplot3d import axes3d
 import matplotlib.pyplot as plt
 from matplotlib import cm
+from mpl_toolkits.mplot3d import axes3d
+
+
+def anchor_labels(count):
+    base = ["A", "B", "C", "D"]
+    if count <= len(base):
+        return base[:count]
+    return base + ["I"]
 
 
 if __name__ == "__main__":
-    low_axis_max_force = 120
-    low_axis_target_force = 20
-
-    # Match the hangprinter-flex-compensation flex.hpp defined anchors
+    # Match the hangprinter-flex-compensation reference
     anchors = np.array(
-        [[16.4, -1610.98, -131.53], [1314.22, 128.14, -121.28], [-15.73, 1415.61, -121.82], [-1211.62, 18.14, -111.18], [10.0, -10.0, 2299.83]]
+        [
+            [16.4, -1610.98, -131.53],
+            [1314.22, 128.14, -121.28],
+            [-15.73, 1415.61, -121.82],
+            [-1211.62, 18.14, -111.18],
+            [10.0, -10.0, 2299.83],
+        ]
     )
-    min_xy = -1611
-    max_xy = 1601
-    steps = 50
-    X, Y = np.meshgrid(np.linspace(min_xy, max_xy, steps), np.linspace(min_xy, max_xy, steps))
-    pos = np.c_[np.c_[np.ravel(X)[:, np.newaxis], np.ravel(Y)], np.zeros(steps * steps)]
 
-    mechanical_advantage = np.array([2.0, 2.0, 2.0, 2.0, 4.0])
-    springKPerUnitLength = 20000
-    mover_weight = 1.0
-    dist = flex_distance(
-        low_axis_max_force,
-        low_axis_target_force,
-        anchors,
-        pos,
-        mechanical_advantage,
-        springKPerUnitLength,
-        mover_weight,
-    )
-    ZA = dist[:, 0]
-    ZB = dist[:, 1]
-    ZC = dist[:, 2]
-    ZD = dist[:, 3]
-    ZI = dist[:, 4]
-    ZA = ZA.reshape(X.shape)
-    ZB = ZB.reshape(X.shape)
-    ZC = ZC.reshape(X.shape)
-    ZD = ZD.reshape(X.shape)
-    ZI = ZI.reshape(X.shape)
+    mass_kg = 1.0
+    g = 9.81
+    min_abcd = 3.0
+    max_abcd = 120.0
+    min_I = 3.0
+    max_I = 120.0
 
-    axA = plt.figure().add_subplot(111, projection="3d")
-    #axB = plt.figure().add_subplot(111, projection="3d")
-    #axC = plt.figure().add_subplot(111, projection="3d")
-    #axD = plt.figure().add_subplot(111, projection="3d")
-    #axI = plt.figure().add_subplot(111, projection="3d")
-    axA.plot_surface(X, Y, ZA, cmap=cm.coolwarm)
-    #axB.plot_surface(X, Y, ZB, cmap=cm.coolwarm)
-    #axC.plot_surface(X, Y, ZC, cmap=cm.coolwarm)
-    #axD.plot_surface(X, Y, ZD, cmap=cm.coolwarm)
-    #axI.plot_surface(X, Y, ZI, cmap=cm.coolwarm)
+    min_force = np.array([min_abcd, min_abcd, min_abcd, min_abcd, min_I])
+    max_force = np.array([max_abcd, max_abcd, max_abcd, max_abcd, max_I])
+
+    min_xy = -1611.0
+    max_xy = 1601.0
+    step = 35.0
+
+    grid = np.arange(min_xy, max_xy, step)
+    X, Y = np.meshgrid(grid, grid)
+    flattened = np.c_[X.ravel(), Y.ravel(), np.zeros_like(X).ravel()]
+
+    tensions = np.zeros((flattened.shape[0], anchors.shape[0]))
+    supported_frac = np.zeros(flattened.shape[0])
+    residual_z = np.zeros(flattened.shape[0])
+
+    for idx, mover in enumerate(flattened):
+        res = static_forces_qp(
+            anchors,
+            mover,
+            min_force,
+            max_force,
+            mass_kg=mass_kg,
+            g=g,
+        )
+        tensions[idx] = res["tensions"]
+        supported_frac[idx] = res["supported_gravity_frac"]
+        residual_z[idx] = res["residual"][2]
+
+    Z = [tensions[:, i].reshape(X.shape) for i in range(anchors.shape[0])]
+    Z_frac = supported_frac.reshape(X.shape)
+    Z_res = residual_z.reshape(X.shape)
+
+    labels = anchor_labels(anchors.shape[0])
+    axes = []
+    for i, label in enumerate(labels):
+        ax = plt.figure().add_subplot(111, projection="3d", title=f"{label} (QP, plane XY)")
+        ax.plot_surface(X, Y, Z[i], cmap=cm.viridis)
+        axes.append(ax)
+
+    ax_frac = plt.figure().add_subplot(111, projection="3d", title="Supported gravity fraction (QP, plane XY)")
+    ax_frac.plot_surface(X, Y, Z_frac, cmap=cm.coolwarm)
+
+    ax_res = plt.figure().add_subplot(111, projection="3d", title="Gravity residual Z (QP, plane XY)")
+    ax_res.plot_surface(X, Y, Z_res, cmap=cm.coolwarm)
 
     plt.show()

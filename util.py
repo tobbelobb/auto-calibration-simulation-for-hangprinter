@@ -69,17 +69,30 @@ def distance_samples_relative_to_origin(anchors, pos):
 def pos_to_motor_pos_samples(
     anchors,
     pos,
-    low_axis_max_force,
+    max_force,
     use_flex,
     spool_buildup_factor=constant_spool_buildup_factor,
     spool_r_in_origin=spool_r_in_origin_first_guess,
     spool_to_motor_gearing_factor=spool_gear_teeth / motor_gear_teeth,
     mech_adv_=mechanical_advantage,
     lines_per_spool_=lines_per_spool,
+    min_force=None,
+    spring_k_per_unit_length=springKPerUnitLength,
+    mover_weight=mover_weight,
+    ignore_gravity=False,
+    ignore_pretension=False,
+    lambda_reg=1e-3,
+    tol=1e-3,
+    max_iters_target=100,
+    g=9.81,
+    guy_wire_lengths=None,
 ):
     """
     What motor positions (in degrees) motors would be at,
     given anchor and data collection positions.
+
+    When use_flex is True, line stretch compensation uses the firmware QP
+    static force solver; min_force/max_force can be scalars or per-axis arrays.
     """
 
     # Assure np.array type
@@ -100,13 +113,20 @@ def pos_to_motor_pos_samples(
     relative_line_lengths = distance_samples_relative_to_origin(anchors, pos)
     if use_flex:
         relative_line_lengths += flex_distance(
-            low_axis_max_force,
-            np.max(np.array([low_axis_max_force - 1, 0.0001])),
             anchors,
             pos,
-            mechanical_advantage,
-            springKPerUnitLength,
+            mech_adv_,
+            spring_k_per_unit_length,
             mover_weight,
+            min_force=min_force,
+            max_force=max_force,
+            ignore_gravity=ignore_gravity,
+            ignore_pretension=ignore_pretension,
+            lambda_reg=lambda_reg,
+            tol=tol,
+            max_iters_target=max_iters_target,
+            g=g,
+            guy_wire_lengths=guy_wire_lengths,
         )
     motor_positions = k0 * (np.sqrt(abs(spool_r_in_origin_sq + relative_line_lengths * k2)) - spool_r_in_origin)
 
