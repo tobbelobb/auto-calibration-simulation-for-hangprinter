@@ -352,6 +352,8 @@ def parallel_optimize(
     xyz_of_samp,
     dimensions,
     optimizer_method,
+    ftol,
+    eps,
 ):
     pos_dim = 2 if int(dimensions) == 2 else 3
 
@@ -387,13 +389,16 @@ def parallel_optimize(
         warnings.filterwarnings(
             "ignore", message="Values in x were outside bounds during a minimize step, clipping to bounds"
         )
+        options = {"disp": disp, "ftol": float(ftol), "maxiter": maxiter}
+        if eps is not None:
+            options["eps"] = float(eps)
         sol = scipy.optimize.minimize(
             f,
             random_guess,
             method=str(optimizer_method),
             bounds=list(zip(lb, ub)),
             callback=cb if disp else None,
-            options={"disp": disp, "ftol": 1e-9, "maxiter": maxiter},
+            options=options,
         )
     return sol
 
@@ -464,6 +469,8 @@ def solve(
     tries: int = 8,
     maxiter: int = 1500,
     use_parallel: bool = True,
+    ftol: float = 1e-9,
+    eps: float | None = None,
 ):
     """Find reasonable positions and anchors given a set of samples."""
 
@@ -623,6 +630,8 @@ def solve(
                     [xyz_of_samp] * int(tries),
                     [dimensions] * int(tries),
                     [optimizer_method] * int(tries),
+                    [ftol] * int(tries),
+                    [eps] * int(tries),
                 )
             )
     else:
@@ -645,6 +654,8 @@ def solve(
                 xyz_of_samp,
                 dimensions,
                 optimizer_method,
+                ftol,
+                eps,
             )
             for guess in random_guesses
         ]
