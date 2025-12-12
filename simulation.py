@@ -512,7 +512,7 @@ def solve(
                 -l_long,  # A_iz > x
             ]
             + [-l_short, -l_short, -l_short] * (u - ux)
-            + [spool_r_in_origin_first_guess[0] - 0.50, spool_r_in_origin_first_guess[4] - 0.50]
+            + [spool_r_in_origin_first_guess[0] - 0.10, spool_r_in_origin_first_guess[4] - 0.10]
             + [-xyz_offset_max, -xyz_offset_max, -xyz_offset_max]
         )
         ub = np.array(
@@ -534,7 +534,7 @@ def solve(
                 l_long,  # A_iz < x
             ]
             + [l_short, l_short, 2.0 * l_short] * (u - ux)
-            + [spool_r_in_origin_first_guess[0] + 1.5, spool_r_in_origin_first_guess[4] + 1.5]
+            + [spool_r_in_origin_first_guess[0] + 0.1, spool_r_in_origin_first_guess[4] + 0.1]
             + [xyz_offset_max, xyz_offset_max, xyz_offset_max]
         )
         params_buildup_local = 2
