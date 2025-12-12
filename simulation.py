@@ -322,11 +322,16 @@ def anchorsmatrix2ang(a, r):
 
 
 def posvec2matrix(v, u):
-    return np.reshape(v, (u, 3))
+    v = np.asarray(v, dtype=float)
+    if v.size % u != 0:
+        raise ValueError("pos vector length must be divisible by u")
+    dim = int(v.size // u)
+    return np.reshape(v, (u, dim))
 
 
 def posmatrix2vec(m):
-    return np.reshape(m, np.shape(m)[0] * 3)
+    m = np.asarray(m, dtype=float)
+    return np.reshape(m, (m.size,))
 
 
 def parallel_optimize(
@@ -348,28 +353,46 @@ def parallel_optimize(
     dimensions,
     optimizer_method,
 ):
+    pos_dim = 2 if int(dimensions) == 2 else 3
+
+    def f(x):
+        return costx(
+            x[params_anch : -(params_buildup + params_perturb + use_flex)],
+            x[0:params_anch],
+            constant_spool_buildup_factor,
+            x[-(params_buildup + params_perturb + use_flex) : -(params_perturb + use_flex)],
+            line_lengths_when_at_origin,
+            x[-(params_perturb + use_flex) : (x.size - use_flex)],
+            use_flex,
+            use_line_lengths,
+            x[-1],
+            motor_pos_samp,
+            xyz_of_samp,
+            dimensions,
+        )
+
+    it = {"n": 0}
+    last_print = {"t": 0.0}
+
+    def cb(xk):
+        it["n"] += 1
+        if it["n"] == 1 or (it["n"] % 10 == 0):
+            try:
+                val = f(xk)
+                print(f"[minimize] iter={it['n']} cost={val:.6e} pos_dim={pos_dim}", flush=True)
+            except Exception:
+                pass
+
     with warnings.catch_warnings():
         warnings.filterwarnings(
             "ignore", message="Values in x were outside bounds during a minimize step, clipping to bounds"
         )
         sol = scipy.optimize.minimize(
-            lambda x: costx(
-                x[params_anch : -(params_buildup + params_perturb + use_flex)],
-                x[0:params_anch],
-                constant_spool_buildup_factor,
-                x[-(params_buildup + params_perturb + use_flex) : -(params_perturb + use_flex)],
-                line_lengths_when_at_origin,
-                x[-(params_perturb + use_flex) : (x.size - use_flex)],
-                use_flex,
-                use_line_lengths,
-                x[-1],
-                motor_pos_samp,
-                xyz_of_samp,
-                dimensions,
-            ),
+            f,
             random_guess,
             method=str(optimizer_method),
             bounds=list(zip(lb, ub)),
+            callback=cb if disp else None,
             options={"disp": disp, "ftol": 1e-9, "maxiter": maxiter},
         )
     return sol
@@ -406,9 +429,11 @@ def costx(
     if np.size(xyz_of_samp) != 0:
         pos[0:ux] = xyz_of_samp
     if u > ux:
-        pos[ux:] = np.reshape(posvec, (u - ux, 3))
-    if int(dimensions) == 2:
-        pos[:, 2] = 0.0
+        if int(dimensions) == 2:
+            pos[ux:, :2] = np.reshape(posvec, (u - ux, 2))
+            pos[ux:, 2] = 0.0
+        else:
+            pos[ux:] = np.reshape(posvec, (u - ux, 3))
 
     # return cost_sq_for_pos_samp_combined(
     # return cost_sq_for_pos_samp_forward_transform(
@@ -456,7 +481,15 @@ def solve(
     ux = np.shape(xyz_of_samp)[0]
     num_axes = int(np.shape(motor_pos_samp)[1])
     params_anch = 3 * num_axes
-    number_of_params_pos = 3 * (u - ux)
+    pos_dim = 2 if int(dimensions) == 2 else 3
+    number_of_params_pos = pos_dim * (u - ux)
+    if debug:
+        print(
+            f"solve(): axes={num_axes} dims={dimensions} samples={u} known_xyz={ux} "
+            f"vars={params_anch + number_of_params_pos + params_perturb + (1 if use_flex else 0)} "
+            f"(+spool params)",
+            flush=True,
+        )
 
     # Limits of anchor positions:
     if num_axes == 5 and int(dimensions) == 3:
@@ -518,17 +551,18 @@ def solve(
 
         spool_guess = float(spool_r_in_origin_first_guess[0]) if np.size(spool_r_in_origin_first_guess) else 75.0
         params_buildup_local = num_axes
+        if int(dimensions) == 2:
+            pos_lb = [-l_short, -l_short] * (u - ux)
+            pos_ub = [l_short, l_short] * (u - ux)
+        else:
+            pos_lb = [-l_short, -l_short, data_z_min] * (u - ux)
+            pos_ub = [l_short, l_short, 2.0 * l_short] * (u - ux)
+
         lb = np.array(
-            anchor_lb
-            + [-l_short, -l_short, data_z_min] * (u - ux)
-            + [spool_guess - 0.50] * params_buildup_local
-            + [-xyz_offset_max, -xyz_offset_max, -xyz_offset_max]
+            anchor_lb + pos_lb + [spool_guess - 0.50] * params_buildup_local + [-xyz_offset_max, -xyz_offset_max, -xyz_offset_max]
         )
         ub = np.array(
-            anchor_ub
-            + [l_short, l_short, 2.0 * l_short] * (u - ux)
-            + [spool_guess + 1.5] * params_buildup_local
-            + [xyz_offset_max, xyz_offset_max, xyz_offset_max]
+            anchor_ub + pos_ub + [spool_guess + 1.5] * params_buildup_local + [xyz_offset_max, xyz_offset_max, xyz_offset_max]
         )
 
     if use_flex:
@@ -540,7 +574,7 @@ def solve(
     #    1500
     # )  # np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
     # Start at zeros
-    pos_est = np.zeros((u - ux, 3))  # The positions we need to estimate
+    pos_est = np.zeros((u - ux, pos_dim))  # The positions we need to estimate
     anchors_est = np.zeros((num_axes, 3))
     x_guess = (
         list(anchorsmatrix2vec(anchors_est))[0:params_anch]

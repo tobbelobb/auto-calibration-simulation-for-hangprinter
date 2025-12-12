@@ -100,6 +100,30 @@ def pos_to_motor_pos_samples(
     mech_adv_ = np.array(mech_adv_)
     lines_per_spool_ = np.array(lines_per_spool_)
 
+    # If buildup is disabled (Q=0), fall back to constant radius behavior:
+    # degrees = (gear * mech_adv * 360 / (2π)) * (ΔL / r)
+    if abs(float(spool_buildup_factor)) <= 1e-9:
+        relative_line_lengths = distance_samples_relative_to_origin(anchors, pos)
+        if use_flex:
+            relative_line_lengths += flex_distance(
+                anchors,
+                pos,
+                mech_adv_,
+                spring_k_per_unit_length,
+                mover_weight,
+                min_force=min_force,
+                max_force=max_force,
+                ignore_gravity=ignore_gravity,
+                ignore_pretension=ignore_pretension,
+                lambda_reg=lambda_reg,
+                tol=tol,
+                max_iters_target=max_iters_target,
+                g=g,
+                guy_wire_lengths=guy_wire_lengths,
+            )
+        degrees_per_unit_times_r = (spool_to_motor_gearing_factor * mech_adv_ * 360.0) / (2.0 * np.pi)
+        return degrees_per_unit_times_r * (relative_line_lengths / spool_r_in_origin)
+
     spool_r_in_origin_sq = spool_r_in_origin * spool_r_in_origin
 
     # Buildup per line times lines. Minus sign because more line in air means less line on spool
@@ -141,6 +165,15 @@ def motor_pos_samples_to_distances_relative_to_origin(
     mech_adv_=mechanical_advantage,
     lines_per_spool_=lines_per_spool,
 ):
+    # If buildup is disabled (Q=0), fall back to constant radius behavior:
+    # ΔL = degrees * (2π r) / (gear * mech_adv * 360)
+    if abs(float(spool_buildup_factor)) <= 1e-9:
+        motor_samps = np.asarray(motor_samps, dtype=float)
+        spool_r = np.asarray(spool_r, dtype=float)
+        mech_adv_ = np.asarray(mech_adv_, dtype=float)
+        scale = (2.0 * np.pi * spool_r) / (spool_to_motor_gearing_factor * mech_adv_ * 360.0)
+        return motor_samps * scale
+
     # Buildup per line times lines. Minus sign because more line in air means less line on spool
     c1 = -mech_adv_ * lines_per_spool_ * spool_buildup_factor
 
