@@ -41,6 +41,9 @@ I = 4
 X = 0
 Y = 1
 Z = 2
+# Backwards-compatible default for HP5 (5 axes).
+# For generalized solves, `solve()` computes params_anch from motor_pos_samp columns.
+params_anch = 15
 params_buildup = 2
 params_perturb = 3
 
@@ -343,6 +346,7 @@ def parallel_optimize(
     motor_pos_samp,
     xyz_of_samp,
     dimensions,
+    optimizer_method,
 ):
     with warnings.catch_warnings():
         warnings.filterwarnings(
@@ -364,7 +368,7 @@ def parallel_optimize(
                 dimensions,
             ),
             random_guess,
-            method="SLSQP",
+            method=str(optimizer_method),
             bounds=list(zip(lb, ub)),
             options={"disp": disp, "ftol": 1e-9, "maxiter": maxiter},
         )
@@ -431,6 +435,10 @@ def solve(
     use_line_lengths,
     debug=False,
     dimensions: int = 3,
+    optimizer_method: str = "SLSQP",
+    tries: int = 8,
+    maxiter: int = 1500,
+    use_parallel: bool = True,
 ):
     """Find reasonable positions and anchors given a set of samples."""
 
@@ -544,10 +552,9 @@ def solve(
         )
         + [0, 0, 0]
     )
-    maxiter = 1500
     if use_flex:
         x_guess += [0.0]
-        maxiter = 500
+        maxiter = min(int(maxiter), 500)
 
     disp = False
     if debug:
@@ -556,33 +563,57 @@ def solve(
     best_cost = 999999.9
     best_x = x_guess
 
-    tries = 8
     random_guesses = [
-        np.array([b[0] + (b[1] - b[0]) * np.random.rand() for b in list(zip(lb, ub))]) for _ in range(tries)
+        np.array([b[0] + (b[1] - b[0]) * np.random.rand() for b in list(zip(lb, ub))]) for _ in range(int(tries))
     ]
 
-    with concurrent.futures.ProcessPoolExecutor() as executor:
-        solutions = list(
-            executor.map(
-                parallel_optimize,
-                random_guesses,
-                [lb] * tries,
-                [ub] * tries,
-                [costx] * tries,
-                [params_anch] * tries,
-                [params_buildup_local] * tries,
-                [params_perturb] * tries,
-                [use_flex] * tries,
-                [use_line_lengths] * tries,
-                [line_lengths_when_at_origin] * tries,
-                [constant_spool_buildup_factor] * tries,
-                [disp] * tries,
-                [maxiter] * tries,
-                [motor_pos_samp] * tries,
-                [xyz_of_samp] * tries,
-                [dimensions] * tries,
+    if use_parallel and int(tries) > 1:
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            solutions = list(
+                executor.map(
+                    parallel_optimize,
+                    random_guesses,
+                    [lb] * int(tries),
+                    [ub] * int(tries),
+                    [costx] * int(tries),
+                    [params_anch] * int(tries),
+                    [params_buildup_local] * int(tries),
+                    [params_perturb] * int(tries),
+                    [use_flex] * int(tries),
+                    [use_line_lengths] * int(tries),
+                    [line_lengths_when_at_origin] * int(tries),
+                    [constant_spool_buildup_factor] * int(tries),
+                    [disp] * int(tries),
+                    [maxiter] * int(tries),
+                    [motor_pos_samp] * int(tries),
+                    [xyz_of_samp] * int(tries),
+                    [dimensions] * int(tries),
+                    [optimizer_method] * int(tries),
+                )
             )
-        )
+    else:
+        solutions = [
+            parallel_optimize(
+                guess,
+                lb,
+                ub,
+                costx,
+                params_anch,
+                params_buildup_local,
+                params_perturb,
+                use_flex,
+                use_line_lengths,
+                line_lengths_when_at_origin,
+                constant_spool_buildup_factor,
+                disp,
+                maxiter,
+                motor_pos_samp,
+                xyz_of_samp,
+                dimensions,
+                optimizer_method,
+            )
+            for guess in random_guesses
+        ]
 
     for sol in solutions:
         if sol.fun < best_cost:
@@ -680,8 +711,11 @@ if __name__ == "__main__":
 
     u = np.shape(motor_pos_samp)[0]
     ux = np.shape(xyz_of_samp)[0]
+    num_axes = int(np.shape(motor_pos_samp)[1])
+    params_anch_local = 3 * num_axes
+    params_buildup_local = 2 if num_axes == 5 else num_axes
 
-    motor_pos_samp = np.array([r for r in motor_pos_samp.reshape(u * 5)]).reshape((u, 5))
+    motor_pos_samp = np.array([r for r in motor_pos_samp.reshape(u * num_axes)]).reshape((u, num_axes))
     xyz_of_samp = np.array([r for r in xyz_of_samp.reshape(ux * 3)]).reshape((ux, 3))
 
     if ux > u:
@@ -690,13 +724,18 @@ if __name__ == "__main__":
         sys.exit(1)
 
     def computeCost(solution):
-        anch = np.zeros((5, 3))
-        anch = anchorsvec2matrix(solution[0:params_anch])
+        anch = np.zeros((num_axes, 3))
+        anch = anchorsvec2matrix(solution[0:params_anch_local])
         spool_buildup_factor = constant_spool_buildup_factor
         spool_r = np.array(
-            [x for x in solution[-(params_buildup + params_perturb + use_flex) : -(params_perturb + use_flex)]]
+            [
+                x
+                for x in solution[
+                    -(params_buildup_local + params_perturb + use_flex) : -(params_perturb + use_flex)
+                ]
+            ]
         )
-        spool_r = np.r_[spool_r[0], spool_r[0], spool_r[0], spool_r]
+        spool_r = _expand_spool_r(spool_r, num_axes)
 
         line_max_force = solution[-use_flex]  # This actually works
         pos = np.zeros((u, 3))
@@ -704,11 +743,17 @@ if __name__ == "__main__":
             pos = np.vstack(
                 (
                     xyz_of_samp,
-                    np.reshape(solution[params_anch : -(params_buildup + params_perturb + use_flex)], (u - ux, 3)),
+                    np.reshape(
+                        solution[params_anch_local : -(params_buildup_local + params_perturb + use_flex)],
+                        (u - ux, 3),
+                    ),
                 )
             )
         else:
-            pos = np.reshape([x for x in solution[params_anch : -(params_buildup + params_perturb + use_flex)]], (u, 3))
+            pos = np.reshape(
+                [x for x in solution[params_anch_local : -(params_buildup_local + params_perturb + use_flex)]],
+                (u, 3),
+            )
         # return cost_sq_for_pos_samp_combined(
         # return cost_sq_for_pos_samp_forward_transform(
         return cost_sq_for_pos_samp(
@@ -723,12 +768,12 @@ if __name__ == "__main__":
             line_max_force,
         )
 
-    ndim = 3 * (u - ux) + params_anch + params_buildup + params_perturb + use_flex
+    ndim = 3 * (u - ux) + params_anch_local + params_buildup_local + params_perturb + use_flex
 
     class candidate:
         name = "no_name"
         solution = np.zeros(ndim)
-        anch = np.zeros((5, 3))
+        anch = np.zeros((num_axes, 3))
         spool_buildup_factor = constant_spool_buildup_factor
         cost = 9999.9
         pos = np.zeros(3 * (u - ux))
@@ -744,23 +789,29 @@ if __name__ == "__main__":
                 if args["debug"]:
                     print("%s has cost %e" % (self.name, self.cost))
                 np.set_printoptions(suppress=True)
-                self.anch = anchorsvec2matrix(self.solution[0:params_anch])
+                self.anch = anchorsvec2matrix(self.solution[0:params_anch_local])
                 self.spool_buildup_factor = constant_spool_buildup_factor  # self.solution[-params_buildup]
                 self.spool_r = self.solution[
-                    -(params_buildup + params_perturb + use_flex) : -(params_perturb + use_flex)
+                    -(params_buildup_local + params_perturb + use_flex) : -(params_perturb + use_flex)
                 ]
-                self.spool_r = np.r_[self.spool_r[0], self.spool_r[0], self.spool_r[0], self.spool_r]
+                self.spool_r = _expand_spool_r(self.spool_r, num_axes)
                 if np.size(xyz_of_samp) != 0:
                     self.pos = np.vstack(
                         (
                             xyz_of_samp,
                             np.reshape(
-                                solution[params_anch : -(params_buildup + params_perturb + use_flex)], (u - ux, 3)
+                                solution[
+                                    params_anch_local : -(params_buildup_local + params_perturb + use_flex)
+                                ],
+                                (u - ux, 3),
                             ),
                         )
                     )
                 else:
-                    self.pos = np.reshape(solution[params_anch : -(params_buildup + params_perturb + use_flex)], (u, 3))
+                    self.pos = np.reshape(
+                        solution[params_anch_local : -(params_buildup_local + params_perturb + use_flex)],
+                        (u, 3),
+                    )
                 if use_flex:
                     self.xyz_offset = solution[-(params_perturb + 1) : -1]
                     self.line_max_force = solution[-1]
@@ -771,7 +822,14 @@ if __name__ == "__main__":
     st1 = timeit.default_timer()
     the_cand = candidate(
         "no_name",
-        solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, use_flex, use_line_lengths, args["debug"]),
+        solve(
+            motor_pos_samp,
+            xyz_of_samp,
+            line_lengths_when_at_origin,
+            use_flex,
+            use_line_lengths,
+            args["debug"],
+        ),
     )
 
     st2 = timeit.default_timer()
@@ -807,13 +865,13 @@ if __name__ == "__main__":
     )
     np.set_printoptions(suppress=True)
 
-    if (u + 3 * ux) < params_anch:
+    if (u + 3 * ux) < params_anch_local:
         print("\nError: Lack of data detected.\n       Collect more samples.")
         if not args["debug"]:
             sys.exit(1)
         else:
             print("       Debug flag is set, so printing bogus anchor values anyways.")
-    elif (u + 3 * ux) < params_anch + 4:
+    elif (u + 3 * ux) < params_anch_local + 4:
         print(
             "\nWarning: Data set might be too small.\n         The below values are unreliable unless input data is extremely accurate."
         )
