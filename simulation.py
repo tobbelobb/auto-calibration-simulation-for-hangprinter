@@ -29,7 +29,7 @@ l_long = 14000.0  # The longest distance from the origin that we should consider
 l_short = 3000.0  # The longest distance from the origin that we should consider for data point collection
 data_z_min = -100.0  # The lowest z-coordinate the algorithm should care about guessing
 xyz_offset_max = (
-    1.0  # Tell the algorithm to check if all xyz-data may carry an offset error compared to the encoder-data
+    0.0  # Tell the algorithm to check if all xyz-data may carry an offset error compared to the encoder-data
 )
 
 # Axes indexing
@@ -497,40 +497,40 @@ def solve(
             [
                 -l_long,  # A_ax > x
                 -l_long,  # A_ay > x
-                -1300.0,  # A_az > x
-                0.0,  # A_bx > x
+                -l_long,  # A_az > x
+                -l_long,  # A_bx > x
                 -l_long,  # A_by > x
-                -1300.0,  # A_bz > x
+                -l_long,  # A_bz > x
                 -l_long,  # A_cx > x
-                0.0,  # A_cy > x
-                -1300.0,  # A_cz > x
+                -l_long,  # A_cy > x
+                -l_long,  # A_cz > x
                 -l_long,  # A_dx > x
                 -l_long,  # A_dy > x
-                -1300.0,  # A_dz > x
-                -500.0,  # A_ix > x
-                -500.0,  # A_iy > x
-                0.0,  # A_iz > x
+                -l_long,  # A_dz > x
+                -l_long,  # A_ix > x
+                -l_long,  # A_iy > x
+                -l_long,  # A_iz > x
             ]
-            + [-l_short, -l_short, data_z_min] * (u - ux)
+            + [-l_short, -l_short, -l_short] * (u - ux)
             + [spool_r_in_origin_first_guess[0] - 0.50, spool_r_in_origin_first_guess[4] - 0.50]
             + [-xyz_offset_max, -xyz_offset_max, -xyz_offset_max]
         )
         ub = np.array(
             [
                 l_long,  # A_ax < x
-                0.0,  # A_ay < x
-                0.0,  # A_az < x
+                l_long,  # A_ay < x
+                l_long,  # A_az < x
                 l_long,  # A_bx < x
                 l_long,  # A_by < x
-                0.0,  # A_bz < x
+                l_long,  # A_bz < x
                 l_long,  # A_cx < x
                 l_long,  # A_cy < x
-                0.0,  # A_cz < x
-                0.0,  # A_dx < x
+                l_long,  # A_cz < x
+                l_long,  # A_dx < x
                 l_long,  # A_dy < x
-                0.0,  # A_dz < x
-                500.0,  # A_ix < x
-                500.0,  # A_iy < x
+                l_long,  # A_dz < x
+                l_long,  # A_ix < x
+                l_long,  # A_iy < x
                 l_long,  # A_iz < x
             ]
             + [l_short, l_short, 2.0 * l_short] * (u - ux)
@@ -594,7 +594,7 @@ def solve(
     if debug:
         disp = True
 
-    best_cost = 999999.9
+    best_cost = np.inf
     best_x = x_guess
 
     random_guesses = [
