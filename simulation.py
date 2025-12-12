@@ -41,7 +41,6 @@ I = 4
 X = 0
 Y = 1
 Z = 2
-params_anch = 15
 params_buildup = 2
 params_perturb = 3
 
@@ -84,6 +83,11 @@ def cost_sq_for_pos_samp(
     use_line_lengths,
     low_axis_max_force=1,
     printit=False,
+    spool_to_motor_gearing_factor=spool_gear_teeth / motor_gear_teeth,
+    mech_adv_=mechanical_advantage,
+    lines_per_spool_=lines_per_spool,
+    spring_k_per_unit_length=springKPerUnitLength,
+    mover_weight=mover_weight,
 ):
     """
     Sum of squares
@@ -109,7 +113,14 @@ def cost_sq_for_pos_samp(
         err += np.sum(
             pow(
                 distance_samples_relative_to_origin(anchors, pos)
-                - motor_pos_samples_to_distances_relative_to_origin(motor_pos_samp, spool_buildup_factor, spool_r),
+                - motor_pos_samples_to_distances_relative_to_origin(
+                    motor_pos_samp,
+                    spool_buildup_factor,
+                    spool_r,
+                    spool_to_motor_gearing_factor=spool_to_motor_gearing_factor,
+                    mech_adv_=mech_adv_,
+                    lines_per_spool_=lines_per_spool_,
+                ),
                 2,
             )
         )
@@ -163,7 +174,10 @@ def cost_sq_for_pos_samp(
             use_flex,
             spool_r_in_origin=spool_r,
             min_force=min_force,
-            spring_k_per_unit_length=springKPerUnitLength,
+            spool_to_motor_gearing_factor=spool_to_motor_gearing_factor,
+            mech_adv_=mech_adv_,
+            lines_per_spool_=lines_per_spool_,
+            spring_k_per_unit_length=spring_k_per_unit_length,
             mover_weight=mover_weight,
         )
         print("Rotational errors:")
@@ -255,38 +269,37 @@ def cost_sq_for_pos_samp_combined(
 
 
 def anchorsvec2matrix(anchorsvec):
-    """Create a 5x3 anchors matrix from anchors vector."""
-    anchors = np.array(
-        [
-            [anchorsvec[0], anchorsvec[1], anchorsvec[2]],
-            [anchorsvec[3], anchorsvec[4], anchorsvec[5]],
-            [anchorsvec[6], anchorsvec[7], anchorsvec[8]],
-            [anchorsvec[9], anchorsvec[10], anchorsvec[11]],
-            [anchorsvec[12], anchorsvec[13], anchorsvec[14]],
-        ]
-    )
-
-    return anchors
+    """Create an Nx3 anchors matrix from anchors vector."""
+    anchorsvec = np.asarray(anchorsvec, dtype=float).ravel()
+    if anchorsvec.size % 3 != 0:
+        raise ValueError("anchorsvec length must be a multiple of 3")
+    n = int(anchorsvec.size // 3)
+    return np.reshape(anchorsvec, (n, 3))
 
 
 def anchorsmatrix2vec(a):
-    return [
-        a[A, X],
-        a[A, Y],
-        a[A, Z],
-        a[B, X],
-        a[B, Y],
-        a[B, Z],
-        a[C, X],
-        a[C, Y],
-        a[C, Z],
-        a[D, X],
-        a[D, Y],
-        a[D, Z],
-        a[I, X],
-        a[I, Y],
-        a[I, Z],
-    ]
+    a = np.asarray(a, dtype=float)
+    if a.ndim != 2 or a.shape[1] != 3:
+        raise ValueError("anchors matrix must be Nx3")
+    return list(np.reshape(a, (a.shape[0] * 3,)))
+
+
+def _expand_spool_r(spool_r_params: np.ndarray, num_axes: int) -> np.ndarray:
+    """Match historical 2-parameter HP5 spool model or return per-axis radii."""
+    spool_r_params = np.asarray(spool_r_params, dtype=float).ravel()
+    if num_axes == 5 and spool_r_params.size == 2:
+        return np.r_[
+            spool_r_params[0],
+            spool_r_params[0],
+            spool_r_params[0],
+            spool_r_params[0],
+            spool_r_params[1],
+        ]
+    if spool_r_params.size == 1:
+        return np.full(num_axes, float(spool_r_params[0]), dtype=float)
+    if spool_r_params.size != num_axes:
+        raise ValueError(f"spool_r params length {spool_r_params.size} incompatible with num_axes={num_axes}")
+    return spool_r_params
 
 
 def anchorsmatrix2ang(a, r):
@@ -329,6 +342,7 @@ def parallel_optimize(
     maxiter,
     motor_pos_samp,
     xyz_of_samp,
+    dimensions,
 ):
     with warnings.catch_warnings():
         warnings.filterwarnings(
@@ -347,6 +361,7 @@ def parallel_optimize(
                 x[-1],
                 motor_pos_samp,
                 xyz_of_samp,
+                dimensions,
             ),
             random_guess,
             method="SLSQP",
@@ -368,6 +383,7 @@ def costx(
     low_axis_max_force,
     motor_pos_samp,
     xyz_of_samp,
+    dimensions,
 ):
     """Identical to cost, except the shape of inputs and capture of samp, xyz_of_samp, ux, and u"""
 
@@ -377,7 +393,8 @@ def costx(
         posvec = np.array([pos for pos in posvec])
     anchvec = np.array([anch for anch in anchvec])
     spool_r = np.array([r for r in spool_r])
-    spool_r = np.r_[spool_r[0], spool_r[0], spool_r[0], spool_r]
+    num_axes = int(np.shape(motor_pos_samp)[1])
+    spool_r = _expand_spool_r(spool_r, num_axes)
     perturb = np.array([p for p in perturb])
 
     anchors = anchorsvec2matrix(anchvec)
@@ -386,6 +403,8 @@ def costx(
         pos[0:ux] = xyz_of_samp
     if u > ux:
         pos[ux:] = np.reshape(posvec, (u - ux, 3))
+    if int(dimensions) == 2:
+        pos[:, 2] = 0.0
 
     # return cost_sq_for_pos_samp_combined(
     # return cost_sq_for_pos_samp_forward_transform(
@@ -399,10 +418,20 @@ def costx(
         use_flex,
         use_line_lengths,
         low_axis_max_force,
+        mech_adv_=mechanical_advantage[:num_axes] if np.size(mechanical_advantage) >= num_axes else np.full(num_axes, 2.0),
+        lines_per_spool_=lines_per_spool[:num_axes] if np.size(lines_per_spool) >= num_axes else np.ones(num_axes),
     )
 
 
-def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, use_flex, use_line_lengths, debug=False):
+def solve(
+    motor_pos_samp,
+    xyz_of_samp,
+    line_lengths_when_at_origin,
+    use_flex,
+    use_line_lengths,
+    debug=False,
+    dimensions: int = 3,
+):
     """Find reasonable positions and anchors given a set of samples."""
 
     if use_flex:
@@ -417,58 +446,85 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, use_flex, us
 
     u = np.shape(motor_pos_samp)[0]
     ux = np.shape(xyz_of_samp)[0]
+    num_axes = int(np.shape(motor_pos_samp)[1])
+    params_anch = 3 * num_axes
     number_of_params_pos = 3 * (u - ux)
 
     # Limits of anchor positions:
-    lb = np.array(
-        [
-            -l_long,  # A_ax > x
-            -l_long,  # A_ay > x
-            -1300.0,  # A_az > x
-            0.0,  # A_bx > x
-            -l_long,  # A_by > x
-            -1300.0,  # A_bz > x
-            -l_long,  # A_cx > x
-            0.0,  # A_cy > x
-            -1300.0,  # A_cz > x
-            -l_long,  # A_dx > x
-            -l_long,  # A_dy > x
-            -1300.0,  # A_dz > x
-            -500.0,  # A_ix > x
-            -500.0,  # A_iy > x
-            0.0,  # A_iz > x
-        ]
-        + [-l_short, -l_short, data_z_min] * (u - ux)
-        + [spool_r_in_origin_first_guess[0] - 0.50, spool_r_in_origin_first_guess[4] - 0.50]
-        + [-xyz_offset_max, -xyz_offset_max, -xyz_offset_max]
-    )
+    if num_axes == 5 and int(dimensions) == 3:
+        lb = np.array(
+            [
+                -l_long,  # A_ax > x
+                -l_long,  # A_ay > x
+                -1300.0,  # A_az > x
+                0.0,  # A_bx > x
+                -l_long,  # A_by > x
+                -1300.0,  # A_bz > x
+                -l_long,  # A_cx > x
+                0.0,  # A_cy > x
+                -1300.0,  # A_cz > x
+                -l_long,  # A_dx > x
+                -l_long,  # A_dy > x
+                -1300.0,  # A_dz > x
+                -500.0,  # A_ix > x
+                -500.0,  # A_iy > x
+                0.0,  # A_iz > x
+            ]
+            + [-l_short, -l_short, data_z_min] * (u - ux)
+            + [spool_r_in_origin_first_guess[0] - 0.50, spool_r_in_origin_first_guess[4] - 0.50]
+            + [-xyz_offset_max, -xyz_offset_max, -xyz_offset_max]
+        )
+        ub = np.array(
+            [
+                l_long,  # A_ax < x
+                0.0,  # A_ay < x
+                0.0,  # A_az < x
+                l_long,  # A_bx < x
+                l_long,  # A_by < x
+                0.0,  # A_bz < x
+                l_long,  # A_cx < x
+                l_long,  # A_cy < x
+                0.0,  # A_cz < x
+                0.0,  # A_dx < x
+                l_long,  # A_dy < x
+                0.0,  # A_dz < x
+                500.0,  # A_ix < x
+                500.0,  # A_iy < x
+                l_long,  # A_iz < x
+            ]
+            + [l_short, l_short, 2.0 * l_short] * (u - ux)
+            + [spool_r_in_origin_first_guess[0] + 1.5, spool_r_in_origin_first_guess[4] + 1.5]
+            + [xyz_offset_max, xyz_offset_max, xyz_offset_max]
+        )
+        params_buildup_local = 2
+    else:
+        anchor_lb = []
+        anchor_ub = []
+        for _ in range(num_axes):
+            anchor_lb.extend([-l_long, -l_long, -1300.0])
+            anchor_ub.extend([l_long, l_long, l_long])
+        if int(dimensions) == 2:
+            for i in range(num_axes):
+                anchor_lb[3 * i + 2] = 0.0
+                anchor_ub[3 * i + 2] = 0.0
+
+        spool_guess = float(spool_r_in_origin_first_guess[0]) if np.size(spool_r_in_origin_first_guess) else 75.0
+        params_buildup_local = num_axes
+        lb = np.array(
+            anchor_lb
+            + [-l_short, -l_short, data_z_min] * (u - ux)
+            + [spool_guess - 0.50] * params_buildup_local
+            + [-xyz_offset_max, -xyz_offset_max, -xyz_offset_max]
+        )
+        ub = np.array(
+            anchor_ub
+            + [l_short, l_short, 2.0 * l_short] * (u - ux)
+            + [spool_guess + 1.5] * params_buildup_local
+            + [xyz_offset_max, xyz_offset_max, xyz_offset_max]
+        )
+
     if use_flex:
         lb = np.append(lb, low_axis_min_force_limit)
-
-    ub = np.array(
-        [
-            l_long,  # A_ax < x
-            0.0,  # A_ay < x
-            0.0,  # A_az < x
-            l_long,  # A_bx < x
-            l_long,  # A_by < x
-            0.0,  # A_bz < x
-            l_long,  # A_cx < x
-            l_long,  # A_cy < x
-            0.0,  # A_cz < x
-            0.0,  # A_dx < x
-            l_long,  # A_dy < x
-            0.0,  # A_dz < x
-            500.0,  # A_ix < x
-            500.0,  # A_iy < x
-            l_long,  # A_iz < x
-        ]
-        + [l_short, l_short, 2.0 * l_short] * (u - ux)
-        + [spool_r_in_origin_first_guess[0] + 1.5, spool_r_in_origin_first_guess[4] + 1.5]
-        + [xyz_offset_max, xyz_offset_max, xyz_offset_max]
-    )
-
-    if use_flex:
         ub = np.append(ub, low_axis_max_force_limit)
 
     # pos_est = 500.0*np.random.random((u - ux, 3)) - 250.0  # The positions we need to estimate
@@ -477,11 +533,15 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, use_flex, us
     # )  # np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
     # Start at zeros
     pos_est = np.zeros((u - ux, 3))  # The positions we need to estimate
-    anchors_est = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
+    anchors_est = np.zeros((num_axes, 3))
     x_guess = (
         list(anchorsmatrix2vec(anchors_est))[0:params_anch]
         + list(posmatrix2vec(pos_est))
-        + list([spool_r_in_origin_first_guess[0], spool_r_in_origin_first_guess[4]])
+        + (
+            list([spool_r_in_origin_first_guess[0], spool_r_in_origin_first_guess[4]])
+            if (num_axes == 5 and int(dimensions) == 3)
+            else [float(spool_r_in_origin_first_guess[0])] * params_buildup_local
+        )
         + [0, 0, 0]
     )
     maxiter = 1500
@@ -510,7 +570,7 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, use_flex, us
                 [ub] * tries,
                 [costx] * tries,
                 [params_anch] * tries,
-                [params_buildup] * tries,
+                [params_buildup_local] * tries,
                 [params_perturb] * tries,
                 [use_flex] * tries,
                 [use_line_lengths] * tries,
@@ -520,6 +580,7 @@ def solve(motor_pos_samp, xyz_of_samp, line_lengths_when_at_origin, use_flex, us
                 [maxiter] * tries,
                 [motor_pos_samp] * tries,
                 [xyz_of_samp] * tries,
+                [dimensions] * tries,
             )
         )
 
