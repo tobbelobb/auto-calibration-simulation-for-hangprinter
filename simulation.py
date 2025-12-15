@@ -19,6 +19,7 @@ from hangprinter_forward_transform import forward_transform5
 from flex_distance import *
 from util import *
 from data import *
+from typing import Any, Dict, Optional, Tuple
 
 
 ## Algorithm help and tuning
@@ -46,6 +47,94 @@ Z = 2
 params_anch = 15
 params_buildup = 2
 params_perturb = 3
+
+
+def _as_float(value, default):
+    try:
+        return float(value)
+    except Exception:
+        return float(default)
+
+
+def _expand_rrf_value(value, num_axes: int, default: float) -> np.ndarray:
+    if value is None:
+        return np.full(num_axes, float(default), dtype=float)
+    if isinstance(value, (int, float)) and np.isfinite(value):
+        return np.full(num_axes, float(value), dtype=float)
+    if isinstance(value, (list, tuple, np.ndarray)):
+        arr = np.asarray(value, dtype=float).reshape(-1)
+        if arr.size == 1 and np.isfinite(arr[0]):
+            return np.full(num_axes, float(arr[0]), dtype=float)
+        if arr.size >= num_axes and np.all(np.isfinite(arr[:num_axes])):
+            return arr[:num_axes].astype(float)
+    return np.full(num_axes, float(default), dtype=float)
+
+
+def _resolve_machine_config(machine_config: Optional[Dict[str, Any]], num_axes: int) -> Dict[str, Any]:
+    if not machine_config:
+        spool_r_guess = np.asarray(spool_r_in_origin_first_guess, dtype=float).reshape(-1)
+        if spool_r_guess.size == 0:
+            spool_r_guess = np.full(num_axes, 75.0, dtype=float)
+        elif spool_r_guess.size < num_axes:
+            spool_r_guess = np.full(num_axes, float(spool_r_guess[0]), dtype=float)
+        else:
+            spool_r_guess = spool_r_guess[:num_axes]
+        mech_adv = np.asarray(mechanical_advantage, dtype=float).reshape(-1)
+        if mech_adv.size < num_axes:
+            mech_adv = np.full(num_axes, float(mech_adv[0] if mech_adv.size else 1.0), dtype=float)
+        else:
+            mech_adv = mech_adv[:num_axes]
+        lines = np.asarray(lines_per_spool, dtype=float).reshape(-1)
+        if lines.size < num_axes:
+            lines = np.full(num_axes, float(lines[0] if lines.size else 1.0), dtype=float)
+        else:
+            lines = lines[:num_axes]
+        spool_gear = float(spool_gear_teeth)
+        motor_gear = float(motor_gear_teeth)
+        spring_k = float(springKPerUnitLength)
+        mover_w = float(mover_weight)
+        guy_wires = np.zeros(num_axes, dtype=float)
+        spool_buildup_factor = float(constant_spool_buildup_factor)
+        min_force_limit = float(low_axis_min_force_limit)
+        max_force_limit = float(low_axis_max_force_limit)
+    else:
+        spool_r_guess = np.asarray(machine_config.get("spool_r_in_origin", []), dtype=float).reshape(-1)
+        if spool_r_guess.size == 0:
+            spool_r_guess = _expand_rrf_value(machine_config.get("spool_r_guess"), num_axes, 75.0)
+        elif spool_r_guess.size < num_axes:
+            spool_r_guess = np.full(num_axes, float(spool_r_guess[0]), dtype=float)
+        else:
+            spool_r_guess = spool_r_guess[:num_axes]
+        mech_adv = _expand_rrf_value(machine_config.get("mechanical_advantage"), num_axes, 1.0)
+        lines = _expand_rrf_value(machine_config.get("lines_per_spool"), num_axes, 1.0)
+        spool_gear_arr = _expand_rrf_value(machine_config.get("spool_gear_teeth"), num_axes, 1.0)
+        motor_gear_arr = _expand_rrf_value(machine_config.get("motor_gear_teeth"), num_axes, 1.0)
+        spool_gear = spool_gear_arr
+        motor_gear = motor_gear_arr
+        spring_k = _as_float(machine_config.get("spring_k_per_unit_length"), springKPerUnitLength)
+        mover_w = _as_float(machine_config.get("mover_weight"), mover_weight)
+        guy_wires = _expand_rrf_value(machine_config.get("guy_wire_lengths"), num_axes, 0.0)
+        spool_buildup_factor = _as_float(machine_config.get("spool_buildup_factor"), constant_spool_buildup_factor)
+        min_force_limit = _as_float(machine_config.get("min_force_limit"), low_axis_min_force_limit)
+        max_force_limit = _as_float(machine_config.get("max_force_limit"), low_axis_max_force_limit)
+
+    spool_gear = np.asarray(spool_gear, dtype=float)
+    motor_gear = np.asarray(motor_gear, dtype=float)
+    motor_gear = np.where(np.abs(motor_gear) > 1e-12, motor_gear, 1.0)
+    spool_to_motor_gearing_factor = spool_gear / motor_gear
+
+    return {
+        "spool_buildup_factor": float(spool_buildup_factor),
+        "spool_r_guess": np.asarray(spool_r_guess, dtype=float),
+        "spool_to_motor_gearing_factor": np.asarray(spool_to_motor_gearing_factor, dtype=float),
+        "mechanical_advantage": np.asarray(mech_adv, dtype=float),
+        "lines_per_spool": np.asarray(lines, dtype=float),
+        "spring_k_per_unit_length": float(spring_k),
+        "mover_weight": float(mover_w),
+        "guy_wire_lengths": np.asarray(guy_wires, dtype=float),
+        "min_force_limit": float(min_force_limit),
+        "max_force_limit": float(max_force_limit),
+    }
 
 
 def cost_from_forces(anchors, pos, force_samps, mover_weight, low_axis_max_force):
@@ -91,6 +180,7 @@ def cost_sq_for_pos_samp(
     lines_per_spool_=lines_per_spool,
     spring_k_per_unit_length=springKPerUnitLength,
     mover_weight=mover_weight,
+    guy_wire_lengths=None,
 ):
     """
     Sum of squares
@@ -137,24 +227,36 @@ def cost_sq_for_pos_samp(
             use_flex,
             spool_r_in_origin=spool_r,
             min_force=min_force,
-            spring_k_per_unit_length=springKPerUnitLength,
+            spool_to_motor_gearing_factor=spool_to_motor_gearing_factor,
+            mech_adv_=mech_adv_,
+            lines_per_spool_=lines_per_spool_,
+            spring_k_per_unit_length=spring_k_per_unit_length,
             mover_weight=mover_weight,
+            guy_wire_lengths=guy_wire_lengths,
         )
-        err += np.sum(np.sqrt(np.sum(pow((synthetic_motor_samp - motor_pos_samp) / mechanical_advantage, 2))))
+        err += np.sum(np.sqrt(np.sum(pow((synthetic_motor_samp - motor_pos_samp) / mech_adv_, 2))))
         # Add error due to flex
         err += np.sum(
             pow(
                 distance_samples_relative_to_origin(anchors, pos)
                 - (
-                    motor_pos_samples_to_distances_relative_to_origin(motor_pos_samp, spool_buildup_factor, spool_r)
+                    motor_pos_samples_to_distances_relative_to_origin(
+                        motor_pos_samp,
+                        spool_buildup_factor,
+                        spool_r,
+                        spool_to_motor_gearing_factor=spool_to_motor_gearing_factor,
+                        mech_adv_=mech_adv_,
+                        lines_per_spool_=lines_per_spool_,
+                    )
                     - flex_distance(
                         anchors,
                         pos,
-                        mechanical_advantage,
-                        springKPerUnitLength,
+                        mech_adv_,
+                        spring_k_per_unit_length,
                         mover_weight,
                         min_force=min_force,
                         max_force=low_axis_max_force,
+                        guy_wire_lengths=guy_wire_lengths,
                     )
                 ),
                 2,
@@ -182,9 +284,10 @@ def cost_sq_for_pos_samp(
             lines_per_spool_=lines_per_spool_,
             spring_k_per_unit_length=spring_k_per_unit_length,
             mover_weight=mover_weight,
+            guy_wire_lengths=guy_wire_lengths,
         )
         print("Rotational errors:")
-        print((synthetic_motor_samp - motor_pos_samp) / mechanical_advantage)
+        print((synthetic_motor_samp - motor_pos_samp) / mech_adv_)
 
     return err
 
@@ -345,7 +448,13 @@ def parallel_optimize(
     use_flex,
     use_line_lengths,
     line_lengths_when_at_origin,
-    constant_spool_buildup_factor,
+    spool_buildup_factor,
+    spool_to_motor_gearing_factor,
+    mech_adv_,
+    lines_per_spool_,
+    spring_k_per_unit_length,
+    mover_weight,
+    guy_wire_lengths,
     disp,
     maxiter,
     motor_pos_samp,
@@ -361,7 +470,7 @@ def parallel_optimize(
         return costx(
             x[params_anch : -(params_buildup + params_perturb + use_flex)],
             x[0:params_anch],
-            constant_spool_buildup_factor,
+            spool_buildup_factor,
             x[-(params_buildup + params_perturb + use_flex) : -(params_perturb + use_flex)],
             line_lengths_when_at_origin,
             x[-(params_perturb + use_flex) : (x.size - use_flex)],
@@ -371,6 +480,12 @@ def parallel_optimize(
             motor_pos_samp,
             xyz_of_samp,
             dimensions,
+            spool_to_motor_gearing_factor=spool_to_motor_gearing_factor,
+            mech_adv_=mech_adv_,
+            lines_per_spool_=lines_per_spool_,
+            spring_k_per_unit_length=spring_k_per_unit_length,
+            mover_weight=mover_weight,
+            guy_wire_lengths=guy_wire_lengths,
         )
 
     it = {"n": 0}
@@ -416,6 +531,13 @@ def costx(
     motor_pos_samp,
     xyz_of_samp,
     dimensions,
+    *,
+    spool_to_motor_gearing_factor=spool_gear_teeth / motor_gear_teeth,
+    mech_adv_=mechanical_advantage,
+    lines_per_spool_=lines_per_spool,
+    spring_k_per_unit_length=springKPerUnitLength,
+    mover_weight=mover_weight,
+    guy_wire_lengths=None,
 ):
     """Identical to cost, except the shape of inputs and capture of samp, xyz_of_samp, ux, and u"""
 
@@ -452,8 +574,12 @@ def costx(
         use_flex,
         use_line_lengths,
         low_axis_max_force,
-        mech_adv_=mechanical_advantage[:num_axes] if np.size(mechanical_advantage) >= num_axes else np.full(num_axes, 2.0),
-        lines_per_spool_=lines_per_spool[:num_axes] if np.size(lines_per_spool) >= num_axes else np.ones(num_axes),
+        spool_to_motor_gearing_factor=spool_to_motor_gearing_factor,
+        mech_adv_=mech_adv_[:num_axes] if np.size(mech_adv_) >= num_axes else np.full(num_axes, 1.0),
+        lines_per_spool_=lines_per_spool_[:num_axes] if np.size(lines_per_spool_) >= num_axes else np.ones(num_axes),
+        spring_k_per_unit_length=spring_k_per_unit_length,
+        mover_weight=mover_weight,
+        guy_wire_lengths=guy_wire_lengths,
     )
 
 
@@ -471,6 +597,7 @@ def solve(
     use_parallel: bool = True,
     ftol: float = 1e-9,
     eps: float | None = None,
+    machine_config: Optional[Dict[str, Any]] = None,
 ):
     """Find reasonable positions and anchors given a set of samples."""
 
@@ -498,8 +625,25 @@ def solve(
             flush=True,
         )
 
+    resolved_config = _resolve_machine_config(machine_config, num_axes)
+    spool_buildup_factor = float(resolved_config["spool_buildup_factor"])
+    spool_r_guess = np.asarray(resolved_config["spool_r_guess"], dtype=float)
+    spool_to_motor_gearing_factor = np.asarray(resolved_config["spool_to_motor_gearing_factor"], dtype=float)
+    mech_adv = np.asarray(resolved_config["mechanical_advantage"], dtype=float)
+    lines_per_spool_local = np.asarray(resolved_config["lines_per_spool"], dtype=float)
+    spring_k_per_unit_length = float(resolved_config["spring_k_per_unit_length"])
+    mover_weight_local = float(resolved_config["mover_weight"])
+    guy_wire_lengths = np.asarray(resolved_config["guy_wire_lengths"], dtype=float)
+    min_force_limit = float(resolved_config["min_force_limit"])
+    max_force_limit = float(resolved_config["max_force_limit"])
+
     # Limits of anchor positions:
     if num_axes == 5 and int(dimensions) == 3:
+        spool_r_guess = (
+            np.full(num_axes, float(spool_r_guess[0]), dtype=float)
+            if spool_r_guess.size < num_axes
+            else spool_r_guess[:num_axes]
+        )
         lb = np.array(
             [
                 -l_long,  # A_ax > x
@@ -519,7 +663,7 @@ def solve(
                 -l_long,  # A_iz > x
             ]
             + [-l_short, -l_short, -l_short] * (u - ux)
-            + [spool_r_in_origin_first_guess[0] - 0.10, spool_r_in_origin_first_guess[4] - 0.10]
+            + [spool_r_guess[0] - 0.10, spool_r_guess[4] - 0.10]
             + [-xyz_offset_max, -xyz_offset_max, -xyz_offset_max]
         )
         ub = np.array(
@@ -541,7 +685,7 @@ def solve(
                 l_long,  # A_iz < x
             ]
             + [l_short, l_short, 2.0 * l_short] * (u - ux)
-            + [spool_r_in_origin_first_guess[0] + 0.1, spool_r_in_origin_first_guess[4] + 0.1]
+            + [spool_r_guess[0] + 0.1, spool_r_guess[4] + 0.1]
             + [xyz_offset_max, xyz_offset_max, xyz_offset_max]
         )
         params_buildup_local = 2
@@ -556,7 +700,11 @@ def solve(
                 anchor_lb[3 * i + 2] = 0.0
                 anchor_ub[3 * i + 2] = 0.0
 
-        spool_guess = float(spool_r_in_origin_first_guess[0]) if np.size(spool_r_in_origin_first_guess) else 75.0
+        spool_r_guess = (
+            np.full(num_axes, float(spool_r_guess[0]), dtype=float)
+            if spool_r_guess.size < num_axes
+            else spool_r_guess[:num_axes]
+        )
         params_buildup_local = num_axes
         if int(dimensions) == 2:
             pos_lb = [-l_short, -l_short] * (u - ux)
@@ -566,15 +714,21 @@ def solve(
             pos_ub = [l_short, l_short, 2.0 * l_short] * (u - ux)
 
         lb = np.array(
-            anchor_lb + pos_lb + [spool_guess - 0.50] * params_buildup_local + [-xyz_offset_max, -xyz_offset_max, -xyz_offset_max]
+            anchor_lb
+            + pos_lb
+            + list((spool_r_guess - 0.50).tolist())
+            + [-xyz_offset_max, -xyz_offset_max, -xyz_offset_max]
         )
         ub = np.array(
-            anchor_ub + pos_ub + [spool_guess + 1.5] * params_buildup_local + [xyz_offset_max, xyz_offset_max, xyz_offset_max]
+            anchor_ub
+            + pos_ub
+            + list((spool_r_guess + 1.50).tolist())
+            + [xyz_offset_max, xyz_offset_max, xyz_offset_max]
         )
 
     if use_flex:
-        lb = np.append(lb, low_axis_min_force_limit)
-        ub = np.append(ub, low_axis_max_force_limit)
+        lb = np.append(lb, min_force_limit)
+        ub = np.append(ub, max_force_limit)
 
     # pos_est = 500.0*np.random.random((u - ux, 3)) - 250.0  # The positions we need to estimate
     # anchors_est = symmetric_anchors(
@@ -587,9 +741,9 @@ def solve(
         list(anchorsmatrix2vec(anchors_est))[0:params_anch]
         + list(posmatrix2vec(pos_est))
         + (
-            list([spool_r_in_origin_first_guess[0], spool_r_in_origin_first_guess[4]])
+            list([float(spool_r_guess[0]), float(spool_r_guess[4])])
             if (num_axes == 5 and int(dimensions) == 3)
-            else [float(spool_r_in_origin_first_guess[0])] * params_buildup_local
+            else [float(x) for x in spool_r_guess[:params_buildup_local]]
         )
         + [0, 0, 0]
     )
@@ -623,7 +777,13 @@ def solve(
                     [use_flex] * int(tries),
                     [use_line_lengths] * int(tries),
                     [line_lengths_when_at_origin] * int(tries),
-                    [constant_spool_buildup_factor] * int(tries),
+                    [spool_buildup_factor] * int(tries),
+                    [spool_to_motor_gearing_factor] * int(tries),
+                    [mech_adv] * int(tries),
+                    [lines_per_spool_local] * int(tries),
+                    [spring_k_per_unit_length] * int(tries),
+                    [mover_weight_local] * int(tries),
+                    [guy_wire_lengths] * int(tries),
                     [disp] * int(tries),
                     [maxiter] * int(tries),
                     [motor_pos_samp] * int(tries),
@@ -647,7 +807,13 @@ def solve(
                 use_flex,
                 use_line_lengths,
                 line_lengths_when_at_origin,
-                constant_spool_buildup_factor,
+                spool_buildup_factor,
+                spool_to_motor_gearing_factor,
+                mech_adv,
+                lines_per_spool_local,
+                spring_k_per_unit_length,
+                mover_weight_local,
+                guy_wire_lengths,
                 disp,
                 maxiter,
                 motor_pos_samp,
