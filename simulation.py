@@ -716,13 +716,13 @@ def solve(
         lb = np.array(
             anchor_lb
             + pos_lb
-            + list((spool_r_guess - 0.50).tolist())
+            + list((spool_r_guess - 0.10).tolist())
             + [-xyz_offset_max, -xyz_offset_max, -xyz_offset_max]
         )
         ub = np.array(
             anchor_ub
             + pos_ub
-            + list((spool_r_guess + 1.50).tolist())
+            + list((spool_r_guess + 0.10).tolist())
             + [xyz_offset_max, xyz_offset_max, xyz_offset_max]
         )
 
