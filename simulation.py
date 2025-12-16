@@ -964,42 +964,85 @@ def solve(
     ]
 
     if use_parallel and int(tries) > 1:
-        with concurrent.futures.ProcessPoolExecutor() as executor:
-            solutions = list(
-                executor.map(
-                    parallel_optimize,
-                    random_guesses,
-                    [lb] * int(tries),
-                    [ub] * int(tries),
-                    [costx] * int(tries),
-                    [params_anch] * int(tries),
-                    [params_buildup_local] * int(tries),
-                    [params_perturb] * int(tries),
-                    [use_flex] * int(tries),
-                    [flex_param_count] * int(tries),
-                    [flex_mode_effective] * int(tries),
-                    [use_line_lengths] * int(tries),
-                    [line_lengths_when_at_origin] * int(tries),
-                    [spool_buildup_factor] * int(tries),
-                    [spool_to_motor_gearing_factor] * int(tries),
-                    [mech_adv] * int(tries),
-                    [lines_per_spool_local] * int(tries),
-                    [spring_k_per_unit_length] * int(tries),
-                    [mover_weight_local] * int(tries),
-                    [guy_wire_lengths] * int(tries),
-                    [ignore_gravity] * int(tries),
-                    [ignore_pretension] * int(tries),
-                    [disp] * int(tries),
-                    [maxiter] * int(tries),
-                    [motor_pos_samp] * int(tries),
-                    [xyz_of_samp] * int(tries),
-                    [dimensions] * int(tries),
-                    [optimizer_method] * int(tries),
-                    [ftol] * int(tries),
-                    [eps] * int(tries),
-                    [tension_samp] * int(tries),
+        solutions = None
+        try:
+            with concurrent.futures.ProcessPoolExecutor() as executor:
+                solutions = list(
+                    executor.map(
+                        parallel_optimize,
+                        random_guesses,
+                        [lb] * int(tries),
+                        [ub] * int(tries),
+                        [costx] * int(tries),
+                        [params_anch] * int(tries),
+                        [params_buildup_local] * int(tries),
+                        [params_perturb] * int(tries),
+                        [use_flex] * int(tries),
+                        [flex_param_count] * int(tries),
+                        [flex_mode_effective] * int(tries),
+                        [use_line_lengths] * int(tries),
+                        [line_lengths_when_at_origin] * int(tries),
+                        [spool_buildup_factor] * int(tries),
+                        [spool_to_motor_gearing_factor] * int(tries),
+                        [mech_adv] * int(tries),
+                        [lines_per_spool_local] * int(tries),
+                        [spring_k_per_unit_length] * int(tries),
+                        [mover_weight_local] * int(tries),
+                        [guy_wire_lengths] * int(tries),
+                        [ignore_gravity] * int(tries),
+                        [ignore_pretension] * int(tries),
+                        [disp] * int(tries),
+                        [maxiter] * int(tries),
+                        [motor_pos_samp] * int(tries),
+                        [xyz_of_samp] * int(tries),
+                        [dimensions] * int(tries),
+                        [optimizer_method] * int(tries),
+                        [ftol] * int(tries),
+                        [eps] * int(tries),
+                        [tension_samp] * int(tries),
+                    )
                 )
-            )
+        except BaseException as exc:
+            if debug:
+                print(f"[solve] Parallel restarts unavailable ({exc}); falling back to threads.", flush=True)
+
+        if solutions is None:
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                solutions = list(
+                    executor.map(
+                        parallel_optimize,
+                        random_guesses,
+                        [lb] * int(tries),
+                        [ub] * int(tries),
+                        [costx] * int(tries),
+                        [params_anch] * int(tries),
+                        [params_buildup_local] * int(tries),
+                        [params_perturb] * int(tries),
+                        [use_flex] * int(tries),
+                        [flex_param_count] * int(tries),
+                        [flex_mode_effective] * int(tries),
+                        [use_line_lengths] * int(tries),
+                        [line_lengths_when_at_origin] * int(tries),
+                        [spool_buildup_factor] * int(tries),
+                        [spool_to_motor_gearing_factor] * int(tries),
+                        [mech_adv] * int(tries),
+                        [lines_per_spool_local] * int(tries),
+                        [spring_k_per_unit_length] * int(tries),
+                        [mover_weight_local] * int(tries),
+                        [guy_wire_lengths] * int(tries),
+                        [ignore_gravity] * int(tries),
+                        [ignore_pretension] * int(tries),
+                        [disp] * int(tries),
+                        [maxiter] * int(tries),
+                        [motor_pos_samp] * int(tries),
+                        [xyz_of_samp] * int(tries),
+                        [dimensions] * int(tries),
+                        [optimizer_method] * int(tries),
+                        [ftol] * int(tries),
+                        [eps] * int(tries),
+                        [tension_samp] * int(tries),
+                    )
+                )
     else:
         solutions = [
             parallel_optimize(
