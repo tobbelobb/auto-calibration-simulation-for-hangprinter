@@ -217,7 +217,7 @@ def cost_sq_for_pos_samp(
     flex_mode: str = "inverse_transform_planned",
     tension_samp: Optional[np.ndarray] = None,
     *,
-    raw_squared_cost: bool = False,
+    raw_squared_cost: bool = True,
     huber_delta_mm: float = 10.0,
 ):
     """
@@ -475,7 +475,7 @@ def cost_sq_for_pos_samp_forward_transform(
     ignore_gravity=False,
     ignore_pretension=False,
     *,
-    raw_squared_cost: bool = False,
+    raw_squared_cost: bool = True,
     huber_delta_mm: float = 10.0,
 ):
     line_length_samp = np.zeros((np.size(motor_pos_samp, 0), 3))
@@ -527,7 +527,7 @@ def cost_sq_for_pos_samp_combined(
     low_axis_max_force=1,
     printit=False,
     *,
-    raw_squared_cost: bool = False,
+    raw_squared_cost: bool = True,
     huber_delta_mm: float = 10.0,
 ):
     return 10 * cost_sq_for_pos_samp_forward_transform(
@@ -740,7 +740,7 @@ def costx(
     ignore_gravity=False,
     ignore_pretension=False,
     guy_wire_lengths=None,
-    raw_squared_cost: bool = False,
+    raw_squared_cost: bool = True,
     huber_delta_mm: float = 10.0,
 ):
     """Identical to cost, except the shape of inputs and capture of samp, xyz_of_samp, ux, and u"""
@@ -811,7 +811,7 @@ def solve(
     flex_mode: str = "per_sample",
     tension_samp: Optional[np.ndarray] = None,
     *,
-    raw_squared_cost: bool = False,
+    raw_squared_cost: bool = True,
     huber_delta_mm: float = 10.0,
 ):
     """Find reasonable positions and anchors given a set of samples."""
@@ -1213,11 +1213,20 @@ if __name__ == "__main__":
     )
     parser.add_argument("-a", "--advanced", help="Use the advanced cost function", action="store_true")
     parser.add_argument("-d", "--debug", help="Print debug information", action="store_true")
-    parser.add_argument(
-        "--raw-squared-cost",
-        help="Use legacy raw sum-of-squared residuals cost (disables robust pseudo-Huber loss).",
+    cost_group = parser.add_mutually_exclusive_group()
+    cost_group.add_argument(
+        "--huber-loss",
+        dest="huber_loss",
         action="store_true",
+        help="Use a pseudo-Huber loss (quadratic near zero, linear for outliers).",
     )
+    cost_group.add_argument(
+        "--raw-squared-cost",
+        dest="huber_loss",
+        action="store_false",
+        help="Use legacy raw sum-of-squared residuals cost (default).",
+    )
+    parser.set_defaults(huber_loss=False)
     parser.add_argument(
         "--huber-delta-mm",
         help="Pseudo-Huber delta in mm for robust cost (ignored with --raw-squared-cost).",
@@ -1228,7 +1237,7 @@ if __name__ == "__main__":
 
     use_flex = args["advanced"]
     use_line_lengths = True
-    raw_squared_cost = bool(args["raw_squared_cost"])
+    raw_squared_cost = not bool(args["huber_loss"])
     huber_delta_mm = float(args["huber_delta_mm"])
 
     u = np.shape(motor_pos_samp)[0]
