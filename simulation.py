@@ -97,6 +97,8 @@ def _resolve_machine_config(machine_config: Optional[Dict[str, Any]], num_axes: 
         spool_buildup_factor = float(constant_spool_buildup_factor)
         min_force_limit = float(low_axis_min_force_limit)
         max_force_limit = float(low_axis_max_force_limit)
+        ignore_gravity = False
+        ignore_pretension = False
     else:
         spool_r_guess = np.asarray(machine_config.get("spool_r_in_origin", []), dtype=float).reshape(-1)
         if spool_r_guess.size == 0:
@@ -117,6 +119,8 @@ def _resolve_machine_config(machine_config: Optional[Dict[str, Any]], num_axes: 
         spool_buildup_factor = _as_float(machine_config.get("spool_buildup_factor"), constant_spool_buildup_factor)
         min_force_limit = _as_float(machine_config.get("min_force_limit"), low_axis_min_force_limit)
         max_force_limit = _as_float(machine_config.get("max_force_limit"), low_axis_max_force_limit)
+        ignore_gravity = bool(_as_float(machine_config.get("ignore_gravity"), 0.0))
+        ignore_pretension = bool(_as_float(machine_config.get("ignore_pretension"), 0.0))
 
     spool_gear = np.asarray(spool_gear, dtype=float)
     motor_gear = np.asarray(motor_gear, dtype=float)
@@ -134,6 +138,8 @@ def _resolve_machine_config(machine_config: Optional[Dict[str, Any]], num_axes: 
         "guy_wire_lengths": np.asarray(guy_wires, dtype=float),
         "min_force_limit": float(min_force_limit),
         "max_force_limit": float(max_force_limit),
+        "ignore_gravity": bool(ignore_gravity),
+        "ignore_pretension": bool(ignore_pretension),
     }
 
 
@@ -180,6 +186,8 @@ def cost_sq_for_pos_samp(
     lines_per_spool_=lines_per_spool,
     spring_k_per_unit_length=springKPerUnitLength,
     mover_weight=mover_weight,
+    ignore_gravity=False,
+    ignore_pretension=False,
     guy_wire_lengths=None,
 ):
     """
@@ -232,6 +240,8 @@ def cost_sq_for_pos_samp(
             lines_per_spool_=lines_per_spool_,
             spring_k_per_unit_length=spring_k_per_unit_length,
             mover_weight=mover_weight,
+            ignore_gravity=ignore_gravity,
+            ignore_pretension=ignore_pretension,
             guy_wire_lengths=guy_wire_lengths,
         )
         err += np.sum(np.sqrt(np.sum(pow((synthetic_motor_samp - motor_pos_samp) / mech_adv_, 2))))
@@ -256,6 +266,8 @@ def cost_sq_for_pos_samp(
                         mover_weight,
                         min_force=min_force,
                         max_force=low_axis_max_force,
+                        ignore_gravity=ignore_gravity,
+                        ignore_pretension=ignore_pretension,
                         guy_wire_lengths=guy_wire_lengths,
                     )
                 ),
@@ -284,6 +296,8 @@ def cost_sq_for_pos_samp(
             lines_per_spool_=lines_per_spool_,
             spring_k_per_unit_length=spring_k_per_unit_length,
             mover_weight=mover_weight,
+            ignore_gravity=ignore_gravity,
+            ignore_pretension=ignore_pretension,
             guy_wire_lengths=guy_wire_lengths,
         )
         print("Rotational errors:")
@@ -303,6 +317,8 @@ def cost_sq_for_pos_samp_forward_transform(
     use_line_lengths,
     low_axis_max_force=1,
     printit=False,
+    ignore_gravity=False,
+    ignore_pretension=False,
 ):
     line_length_samp = np.zeros((np.size(motor_pos_samp, 0), 3))
     min_force = np.maximum(low_axis_max_force - 1, 0.0001)
@@ -317,6 +333,8 @@ def cost_sq_for_pos_samp_forward_transform(
             mover_weight,
             min_force=min_force,
             max_force=low_axis_max_force,
+            ignore_gravity=ignore_gravity,
+            ignore_pretension=ignore_pretension,
         )
     else:
         line_length_samp = motor_pos_samples_to_distances_relative_to_origin(
@@ -455,6 +473,8 @@ def parallel_optimize(
     spring_k_per_unit_length,
     mover_weight,
     guy_wire_lengths,
+    ignore_gravity,
+    ignore_pretension,
     disp,
     maxiter,
     motor_pos_samp,
@@ -485,6 +505,8 @@ def parallel_optimize(
             lines_per_spool_=lines_per_spool_,
             spring_k_per_unit_length=spring_k_per_unit_length,
             mover_weight=mover_weight,
+            ignore_gravity=bool(ignore_gravity),
+            ignore_pretension=bool(ignore_pretension),
             guy_wire_lengths=guy_wire_lengths,
         )
 
@@ -537,6 +559,8 @@ def costx(
     lines_per_spool_=lines_per_spool,
     spring_k_per_unit_length=springKPerUnitLength,
     mover_weight=mover_weight,
+    ignore_gravity=False,
+    ignore_pretension=False,
     guy_wire_lengths=None,
 ):
     """Identical to cost, except the shape of inputs and capture of samp, xyz_of_samp, ux, and u"""
@@ -579,6 +603,8 @@ def costx(
         lines_per_spool_=lines_per_spool_[:num_axes] if np.size(lines_per_spool_) >= num_axes else np.ones(num_axes),
         spring_k_per_unit_length=spring_k_per_unit_length,
         mover_weight=mover_weight,
+        ignore_gravity=ignore_gravity,
+        ignore_pretension=ignore_pretension,
         guy_wire_lengths=guy_wire_lengths,
     )
 
@@ -636,6 +662,8 @@ def solve(
     guy_wire_lengths = np.asarray(resolved_config["guy_wire_lengths"], dtype=float)
     min_force_limit = float(resolved_config["min_force_limit"])
     max_force_limit = float(resolved_config["max_force_limit"])
+    ignore_gravity = bool(resolved_config.get("ignore_gravity", False))
+    ignore_pretension = bool(resolved_config.get("ignore_pretension", False))
 
     # Limits of anchor positions:
     if num_axes == 5 and int(dimensions) == 3:
@@ -784,6 +812,8 @@ def solve(
                     [spring_k_per_unit_length] * int(tries),
                     [mover_weight_local] * int(tries),
                     [guy_wire_lengths] * int(tries),
+                    [ignore_gravity] * int(tries),
+                    [ignore_pretension] * int(tries),
                     [disp] * int(tries),
                     [maxiter] * int(tries),
                     [motor_pos_samp] * int(tries),
@@ -814,6 +844,8 @@ def solve(
                 spring_k_per_unit_length,
                 mover_weight_local,
                 guy_wire_lengths,
+                ignore_gravity,
+                ignore_pretension,
                 disp,
                 maxiter,
                 motor_pos_samp,
