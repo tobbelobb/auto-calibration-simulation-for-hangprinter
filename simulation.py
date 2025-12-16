@@ -170,6 +170,31 @@ def cost_from_forces(anchors, pos, force_samps, mover_weight, low_axis_max_force
     return np.sum((synthetic_forces_pre - force_samps_pre) ** 2) * 1000.0
 
 
+def _cost_from_residuals(
+    residuals: np.ndarray,
+    *,
+    raw_squared_cost: bool,
+    huber_delta_mm: float,
+) -> float:
+    """
+    Convert residuals to a scalar cost.
+
+    Default is a pseudo-Huber loss (quadratic near zero, linear for outliers).
+    Use `raw_squared_cost=True` to get the historical sum-of-squares behavior.
+    """
+    r = np.asarray(residuals, dtype=float)
+    if raw_squared_cost:
+        return float(np.sum(np.square(r)))
+
+    delta = float(huber_delta_mm)
+    if not np.isfinite(delta) or delta <= 0.0:
+        return float(np.sum(np.square(r)))
+
+    scaled = r / delta
+    # 2*delta^2*(sqrt(1+(r/delta)^2)-1) ~= r^2 for small r, ~= 2*delta*|r| for large r
+    return float(np.sum(2.0 * (delta**2) * (np.sqrt(1.0 + np.square(scaled)) - 1.0)))
+
+
 def cost_sq_for_pos_samp(
     anchors,
     pos,
@@ -191,6 +216,9 @@ def cost_sq_for_pos_samp(
     guy_wire_lengths=None,
     flex_mode: str = "inverse_transform_planned",
     tension_samp: Optional[np.ndarray] = None,
+    *,
+    raw_squared_cost: bool = False,
+    huber_delta_mm: float = 10.0,
 ):
     """
     Sum of squares
@@ -213,20 +241,15 @@ def cost_sq_for_pos_samp(
         # synthetic_motor_samp = pos_to_motor_pos_samples(anchors, pos, low_axis_max_force, use_flex, spool_r_in_origin=spool_r)
         # err += np.sum(np.sqrt(np.sum(pow((synthetic_motor_samp - motor_pos_samp) / mechanical_advantage, 2))))
         # These are not rotational errors
-        err += np.sum(
-            pow(
-                distance_samples_relative_to_origin(anchors, pos)
-                - motor_pos_samples_to_distances_relative_to_origin(
-                    motor_pos_samp,
-                    spool_buildup_factor,
-                    spool_r,
-                    spool_to_motor_gearing_factor=spool_to_motor_gearing_factor,
-                    mech_adv_=mech_adv_,
-                    lines_per_spool_=lines_per_spool_,
-                ),
-                2,
-            )
+        residuals = distance_samples_relative_to_origin(anchors, pos) - motor_pos_samples_to_distances_relative_to_origin(
+            motor_pos_samp,
+            spool_buildup_factor,
+            spool_r,
+            spool_to_motor_gearing_factor=spool_to_motor_gearing_factor,
+            mech_adv_=mech_adv_,
+            lines_per_spool_=lines_per_spool_,
         )
+        err += _cost_from_residuals(residuals, raw_squared_cost=raw_squared_cost, huber_delta_mm=huber_delta_mm)
 
     if use_flex and str(flex_mode) == "inverse_transform_planned":
         # Implies use_rotational_errors
@@ -248,34 +271,29 @@ def cost_sq_for_pos_samp(
         )
         err += np.sum(np.sqrt(np.sum(pow((synthetic_motor_samp - motor_pos_samp) / mech_adv_, 2))))
         # Add error due to flex
-        err += np.sum(
-            pow(
-                distance_samples_relative_to_origin(anchors, pos)
-                - (
-                    motor_pos_samples_to_distances_relative_to_origin(
-                        motor_pos_samp,
-                        spool_buildup_factor,
-                        spool_r,
-                        spool_to_motor_gearing_factor=spool_to_motor_gearing_factor,
-                        mech_adv_=mech_adv_,
-                        lines_per_spool_=lines_per_spool_,
-                    )
-                    - flex_distance(
-                        anchors,
-                        pos,
-                        mech_adv_,
-                        spring_k_per_unit_length,
-                        mover_weight,
-                        min_force=min_force,
-                        max_force=low_axis_max_force,
-                        ignore_gravity=ignore_gravity,
-                        ignore_pretension=ignore_pretension,
-                        guy_wire_lengths=guy_wire_lengths,
-                    )
-                ),
-                2,
+        residuals = distance_samples_relative_to_origin(anchors, pos) - (
+            motor_pos_samples_to_distances_relative_to_origin(
+                motor_pos_samp,
+                spool_buildup_factor,
+                spool_r,
+                spool_to_motor_gearing_factor=spool_to_motor_gearing_factor,
+                mech_adv_=mech_adv_,
+                lines_per_spool_=lines_per_spool_,
+            )
+            - flex_distance(
+                anchors,
+                pos,
+                mech_adv_,
+                spring_k_per_unit_length,
+                mover_weight,
+                min_force=min_force,
+                max_force=low_axis_max_force,
+                ignore_gravity=ignore_gravity,
+                ignore_pretension=ignore_pretension,
+                guy_wire_lengths=guy_wire_lengths,
             )
         )
+        err += _cost_from_residuals(residuals, raw_squared_cost=raw_squared_cost, huber_delta_mm=huber_delta_mm)
 
     if use_flex and str(flex_mode) == "per_sample":
         flex_delta = _per_sample_flex_distance(
@@ -286,27 +304,24 @@ def cost_sq_for_pos_samp(
             spring_k_per_unit_length,
             guy_wire_lengths=guy_wire_lengths,
         )
-        err += np.sum(
-            pow(
-                distance_samples_relative_to_origin(anchors, pos)
-                - (
-                    motor_pos_samples_to_distances_relative_to_origin(
-                        motor_pos_samp,
-                        spool_buildup_factor,
-                        spool_r,
-                        spool_to_motor_gearing_factor=spool_to_motor_gearing_factor,
-                        mech_adv_=mech_adv_,
-                        lines_per_spool_=lines_per_spool_,
-                    )
-                    + flex_delta
-                ),
-                2,
+        residuals = distance_samples_relative_to_origin(anchors, pos) - (
+            motor_pos_samples_to_distances_relative_to_origin(
+                motor_pos_samp,
+                spool_buildup_factor,
+                spool_r,
+                spool_to_motor_gearing_factor=spool_to_motor_gearing_factor,
+                mech_adv_=mech_adv_,
+                lines_per_spool_=lines_per_spool_,
             )
+            + flex_delta
         )
+        err += _cost_from_residuals(residuals, raw_squared_cost=raw_squared_cost, huber_delta_mm=huber_delta_mm)
 
     if use_line_lengths:
         line_lengths_when_at_origin_err = np.linalg.norm(anchors, 2, 1) - line_lengths_when_at_origin
-        err += np.sum(abs(line_lengths_when_at_origin_err.dot(line_lengths_when_at_origin_err)))
+        err += _cost_from_residuals(
+            line_lengths_when_at_origin_err, raw_squared_cost=raw_squared_cost, huber_delta_mm=huber_delta_mm
+        )
 
     # use_forces = False
     # if use_forces:
@@ -459,6 +474,9 @@ def cost_sq_for_pos_samp_forward_transform(
     printit=False,
     ignore_gravity=False,
     ignore_pretension=False,
+    *,
+    raw_squared_cost: bool = False,
+    huber_delta_mm: float = 10.0,
 ):
     line_length_samp = np.zeros((np.size(motor_pos_samp, 0), 3))
     min_force = np.maximum(low_axis_max_force - 1, 0.0001)
@@ -485,12 +503,14 @@ def cost_sq_for_pos_samp_forward_transform(
     for i in range(np.size(line_length_samp, 0)):
         new_pos, spread = forward_transform5(anchors, line_length_samp[i])
         diff = pos[i] - new_pos
-        tot_err += diff.dot(diff)
+        tot_err += _cost_from_residuals(diff, raw_squared_cost=raw_squared_cost, huber_delta_mm=huber_delta_mm)
         tot_err += spread
 
     if use_line_lengths:
         line_lengths_when_at_origin_err = np.linalg.norm(anchors, 2, 1) - line_lengths_when_at_origin
-        tot_err = tot_err + line_lengths_when_at_origin_err.dot(line_lengths_when_at_origin_err)
+        tot_err += _cost_from_residuals(
+            line_lengths_when_at_origin_err, raw_squared_cost=raw_squared_cost, huber_delta_mm=huber_delta_mm
+        )
 
     return tot_err
 
@@ -506,6 +526,9 @@ def cost_sq_for_pos_samp_combined(
     use_line_lengths,
     low_axis_max_force=1,
     printit=False,
+    *,
+    raw_squared_cost: bool = False,
+    huber_delta_mm: float = 10.0,
 ):
     return 10 * cost_sq_for_pos_samp_forward_transform(
         anchors,
@@ -518,6 +541,8 @@ def cost_sq_for_pos_samp_combined(
         use_line_lengths,
         low_axis_max_force,
         printit,
+        raw_squared_cost=raw_squared_cost,
+        huber_delta_mm=huber_delta_mm,
     ) + cost_sq_for_pos_samp(
         anchors,
         pos,
@@ -529,6 +554,8 @@ def cost_sq_for_pos_samp_combined(
         use_line_lengths,
         low_axis_max_force,
         printit,
+        raw_squared_cost=raw_squared_cost,
+        huber_delta_mm=huber_delta_mm,
     )
 
 
@@ -626,6 +653,8 @@ def parallel_optimize(
     ftol,
     eps,
     tension_samp,
+    raw_squared_cost,
+    huber_delta_mm,
 ):
     pos_dim = 2 if int(dimensions) == 2 else 3
 
@@ -653,6 +682,8 @@ def parallel_optimize(
             ignore_gravity=bool(ignore_gravity),
             ignore_pretension=bool(ignore_pretension),
             guy_wire_lengths=guy_wire_lengths,
+            raw_squared_cost=bool(raw_squared_cost),
+            huber_delta_mm=float(huber_delta_mm),
         )
 
     it = {"n": 0}
@@ -709,6 +740,8 @@ def costx(
     ignore_gravity=False,
     ignore_pretension=False,
     guy_wire_lengths=None,
+    raw_squared_cost: bool = False,
+    huber_delta_mm: float = 10.0,
 ):
     """Identical to cost, except the shape of inputs and capture of samp, xyz_of_samp, ux, and u"""
 
@@ -755,6 +788,8 @@ def costx(
         ignore_gravity=ignore_gravity,
         ignore_pretension=ignore_pretension,
         guy_wire_lengths=guy_wire_lengths,
+        raw_squared_cost=raw_squared_cost,
+        huber_delta_mm=huber_delta_mm,
     )
 
 
@@ -775,6 +810,9 @@ def solve(
     machine_config: Optional[Dict[str, Any]] = None,
     flex_mode: str = "per_sample",
     tension_samp: Optional[np.ndarray] = None,
+    *,
+    raw_squared_cost: bool = False,
+    huber_delta_mm: float = 10.0,
 ):
     """Find reasonable positions and anchors given a set of samples."""
 
@@ -1000,6 +1038,8 @@ def solve(
                         [ftol] * int(tries),
                         [eps] * int(tries),
                         [tension_samp] * int(tries),
+                        [raw_squared_cost] * int(tries),
+                        [huber_delta_mm] * int(tries),
                     )
                 )
         except BaseException as exc:
@@ -1041,6 +1081,8 @@ def solve(
                         [ftol] * int(tries),
                         [eps] * int(tries),
                         [tension_samp] * int(tries),
+                        [raw_squared_cost] * int(tries),
+                        [huber_delta_mm] * int(tries),
                     )
                 )
     else:
@@ -1076,6 +1118,8 @@ def solve(
                 ftol,
                 eps,
                 tension_samp,
+                raw_squared_cost,
+                huber_delta_mm,
             )
             for guess in random_guesses
         ]
@@ -1169,10 +1213,23 @@ if __name__ == "__main__":
     )
     parser.add_argument("-a", "--advanced", help="Use the advanced cost function", action="store_true")
     parser.add_argument("-d", "--debug", help="Print debug information", action="store_true")
+    parser.add_argument(
+        "--raw-squared-cost",
+        help="Use legacy raw sum-of-squared residuals cost (disables robust pseudo-Huber loss).",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--huber-delta-mm",
+        help="Pseudo-Huber delta in mm for robust cost (ignored with --raw-squared-cost).",
+        type=float,
+        default=10.0,
+    )
     args = vars(parser.parse_args())
 
     use_flex = args["advanced"]
     use_line_lengths = True
+    raw_squared_cost = bool(args["raw_squared_cost"])
+    huber_delta_mm = float(args["huber_delta_mm"])
 
     u = np.shape(motor_pos_samp)[0]
     ux = np.shape(xyz_of_samp)[0]
@@ -1231,6 +1288,8 @@ if __name__ == "__main__":
             use_flex,
             use_line_lengths,
             line_max_force,
+            raw_squared_cost=raw_squared_cost,
+            huber_delta_mm=huber_delta_mm,
         )
 
     ndim = 3 * (u - ux) + params_anch_local + params_buildup_local + params_perturb + use_flex
@@ -1294,6 +1353,8 @@ if __name__ == "__main__":
             use_flex,
             use_line_lengths,
             args["debug"],
+            raw_squared_cost=raw_squared_cost,
+            huber_delta_mm=huber_delta_mm,
         ),
     )
 
@@ -1359,6 +1420,8 @@ if __name__ == "__main__":
                 use_line_lengths,
                 the_cand.line_max_force,
                 printit=True,
+                raw_squared_cost=raw_squared_cost,
+                huber_delta_mm=huber_delta_mm,
             )
 
         print("Spool buildup factor:", the_cand.spool_buildup_factor)  # err
