@@ -189,6 +189,8 @@ def cost_sq_for_pos_samp(
     ignore_gravity=False,
     ignore_pretension=False,
     guy_wire_lengths=None,
+    flex_mode: str = "inverse_transform_planned",
+    tension_samp: Optional[np.ndarray] = None,
 ):
     """
     Sum of squares
@@ -226,7 +228,7 @@ def cost_sq_for_pos_samp(
             )
         )
 
-    if use_flex:
+    if use_flex and str(flex_mode) == "inverse_transform_planned":
         # Implies use_rotational_errors
         synthetic_motor_samp = pos_to_motor_pos_samples(
             anchors,
@@ -275,6 +277,33 @@ def cost_sq_for_pos_samp(
             )
         )
 
+    if use_flex and str(flex_mode) == "per_sample":
+        flex_delta = _per_sample_flex_distance(
+            anchors,
+            pos,
+            tension_samp,
+            mech_adv_,
+            spring_k_per_unit_length,
+            guy_wire_lengths=guy_wire_lengths,
+        )
+        err += np.sum(
+            pow(
+                distance_samples_relative_to_origin(anchors, pos)
+                - (
+                    motor_pos_samples_to_distances_relative_to_origin(
+                        motor_pos_samp,
+                        spool_buildup_factor,
+                        spool_r,
+                        spool_to_motor_gearing_factor=spool_to_motor_gearing_factor,
+                        mech_adv_=mech_adv_,
+                        lines_per_spool_=lines_per_spool_,
+                    )
+                    + flex_delta
+                ),
+                2,
+            )
+        )
+
     if use_line_lengths:
         line_lengths_when_at_origin_err = np.linalg.norm(anchors, 2, 1) - line_lengths_when_at_origin
         err += np.sum(abs(line_lengths_when_at_origin_err.dot(line_lengths_when_at_origin_err)))
@@ -283,7 +312,7 @@ def cost_sq_for_pos_samp(
     # if use_forces:
     #     err += cost_from_forces(anchors, pos, force_samp, mover_weight, low_axis_max_force)
 
-    if printit:
+    if printit and use_flex and str(flex_mode) == "inverse_transform_planned":
         synthetic_motor_samp = pos_to_motor_pos_samples(
             anchors,
             pos,
@@ -304,6 +333,117 @@ def cost_sq_for_pos_samp(
         print((synthetic_motor_samp - motor_pos_samp) / mech_adv_)
 
     return err
+
+
+def _unit_directions_from_mover(anchors: np.ndarray, mover: np.ndarray) -> np.ndarray:
+    """Return an Nx3 matrix of unit direction vectors from mover to anchors."""
+    anchors = np.asarray(anchors, dtype=float)
+    mover = np.asarray(mover, dtype=float).reshape(3)
+    diffs = anchors - mover.reshape(1, 3)
+    norms = np.linalg.norm(diffs, axis=1, keepdims=True)
+    norms = np.where(norms > 1e-12, norms, 1.0)
+    return diffs / norms
+
+
+def _tension_to_extension_mm(
+    anchors: np.ndarray,
+    mover: np.ndarray,
+    tensions_n: np.ndarray,
+    mech_adv: np.ndarray,
+    spring_k_per_unit_length: float,
+    *,
+    guy_wire_lengths: Optional[np.ndarray],
+) -> np.ndarray:
+    anchors = np.asarray(anchors, dtype=float)
+    mover = np.asarray(mover, dtype=float).reshape(3)
+    tensions_n = np.asarray(tensions_n, dtype=float).reshape(-1)
+    mech_adv = np.asarray(mech_adv, dtype=float).reshape(-1)
+    num_axes = int(anchors.shape[0])
+    mech_adv_safe = np.maximum(mech_adv[:num_axes], 1e-9)
+    if guy_wire_lengths is None:
+        guy = np.zeros(num_axes, dtype=float)
+    else:
+        guy = np.asarray(guy_wire_lengths, dtype=float).reshape(-1)[:num_axes]
+
+    if not np.isfinite(float(spring_k_per_unit_length)) or float(spring_k_per_unit_length) <= 0.0:
+        return np.zeros(num_axes, dtype=float)
+
+    distances = np.linalg.norm(anchors - mover.reshape(1, 3), axis=1)
+    spring_lengths = distances * mech_adv_safe + guy
+    spring_lengths = np.maximum(spring_lengths, 1e-9)
+    # springK = S / springLength; extension = F / (springK * mech_adv) = F * springLength / (S * mech_adv)
+    return tensions_n[:num_axes] * spring_lengths / (float(spring_k_per_unit_length) * mech_adv_safe)
+
+
+def _per_sample_flex_distance(
+    anchors: np.ndarray,
+    pos: np.ndarray,
+    tension_samp: Optional[np.ndarray],
+    mech_adv: np.ndarray,
+    spring_k_per_unit_length: float,
+    *,
+    guy_wire_lengths: Optional[np.ndarray],
+) -> np.ndarray:
+    """
+    Compute per-sample flex (extra line length) directly from measured tensions.
+
+    For each sample we assume two line tensions are known from the dataset and solve the
+    remaining line tension(s) so that the net force equals zero (static equilibrium).
+    """
+    anchors = np.asarray(anchors, dtype=float)
+    pos = np.asarray(pos, dtype=float)
+    if pos.ndim == 1:
+        pos = pos.reshape(1, 3)
+    u = int(pos.shape[0])
+    num_axes = int(anchors.shape[0])
+
+    if tension_samp is None:
+        return np.zeros((u, num_axes), dtype=float)
+    tension_samp = np.asarray(tension_samp, dtype=float)
+    if tension_samp.ndim != 2 or tension_samp.shape[0] != u or tension_samp.shape[1] != num_axes:
+        return np.zeros((u, num_axes), dtype=float)
+
+    flex = np.zeros((u, num_axes), dtype=float)
+    for i in range(u):
+        tensions = np.asarray(tension_samp[i], dtype=float).reshape(-1)
+        known = np.isfinite(tensions)
+        unknown_idx = np.where(~known)[0]
+
+        dirs = _unit_directions_from_mover(anchors, pos[i])  # Nx3
+        net_known = np.zeros(3, dtype=float)
+        if np.any(known):
+            net_known = (dirs[known].T @ tensions[known]).reshape(3)
+
+        tensions_filled = np.zeros(num_axes, dtype=float)
+        tensions_filled[known] = tensions[known]
+
+        if unknown_idx.size == 1:
+            j = int(unknown_idx[0])
+            d = dirs[j]
+            denom = float(np.dot(d, d))
+            t_req = float(-np.dot(d, net_known) / denom) if denom > 1e-12 else 0.0
+            tensions_filled[j] = max(t_req, 0.0)
+        elif unknown_idx.size > 1:
+            Au = dirs[unknown_idx].T  # 3xM
+            H = Au.T @ Au
+            H.flat[:: H.shape[0] + 1] += 1e-9
+            f = Au.T @ (-net_known)
+            try:
+                sol = np.linalg.solve(H, f)
+            except np.linalg.LinAlgError:
+                sol = np.zeros(unknown_idx.size, dtype=float)
+            sol = np.where(np.isfinite(sol) & (sol > 0.0), sol, 0.0)
+            tensions_filled[unknown_idx] = sol
+
+        flex[i] = _tension_to_extension_mm(
+            anchors,
+            pos[i],
+            tensions_filled,
+            mech_adv,
+            spring_k_per_unit_length,
+            guy_wire_lengths=guy_wire_lengths,
+        )
+    return flex
 
 
 def cost_sq_for_pos_samp_forward_transform(
@@ -464,6 +604,8 @@ def parallel_optimize(
     params_buildup,
     params_perturb,
     use_flex,
+    flex_param_count,
+    flex_mode,
     use_line_lengths,
     line_lengths_when_at_origin,
     spool_buildup_factor,
@@ -483,23 +625,26 @@ def parallel_optimize(
     optimizer_method,
     ftol,
     eps,
+    tension_samp,
 ):
     pos_dim = 2 if int(dimensions) == 2 else 3
 
     def f(x):
         return costx(
-            x[params_anch : -(params_buildup + params_perturb + use_flex)],
+            x[params_anch : -(params_buildup + params_perturb + flex_param_count)],
             x[0:params_anch],
             spool_buildup_factor,
-            x[-(params_buildup + params_perturb + use_flex) : -(params_perturb + use_flex)],
+            x[-(params_buildup + params_perturb + flex_param_count) : -(params_perturb + flex_param_count)],
             line_lengths_when_at_origin,
-            x[-(params_perturb + use_flex) : (x.size - use_flex)],
+            x[-(params_perturb + flex_param_count) : (x.size - flex_param_count)],
             use_flex,
             use_line_lengths,
-            x[-1],
+            (x[-1] if int(flex_param_count) else float(0.0)),
             motor_pos_samp,
             xyz_of_samp,
             dimensions,
+            flex_mode=str(flex_mode),
+            tension_samp=tension_samp,
             spool_to_motor_gearing_factor=spool_to_motor_gearing_factor,
             mech_adv_=mech_adv_,
             lines_per_spool_=lines_per_spool_,
@@ -554,6 +699,8 @@ def costx(
     xyz_of_samp,
     dimensions,
     *,
+    flex_mode: str = "inverse_transform_planned",
+    tension_samp: Optional[np.ndarray] = None,
     spool_to_motor_gearing_factor=spool_gear_teeth / motor_gear_teeth,
     mech_adv_=mechanical_advantage,
     lines_per_spool_=lines_per_spool,
@@ -598,6 +745,8 @@ def costx(
         use_flex,
         use_line_lengths,
         low_axis_max_force,
+        flex_mode=str(flex_mode),
+        tension_samp=tension_samp,
         spool_to_motor_gearing_factor=spool_to_motor_gearing_factor,
         mech_adv_=mech_adv_[:num_axes] if np.size(mech_adv_) >= num_axes else np.full(num_axes, 1.0),
         lines_per_spool_=lines_per_spool_[:num_axes] if np.size(lines_per_spool_) >= num_axes else np.ones(num_axes),
@@ -624,11 +773,13 @@ def solve(
     ftol: float = 1e-9,
     eps: float | None = None,
     machine_config: Optional[Dict[str, Any]] = None,
+    flex_mode: str = "per_sample",
+    tension_samp: Optional[np.ndarray] = None,
 ):
     """Find reasonable positions and anchors given a set of samples."""
 
     if use_flex:
-        print("Using flex compensation")
+        print(f"Using flex compensation (mode={flex_mode})")
     else:
         print("Assuming zero flex")
 
@@ -643,10 +794,32 @@ def solve(
     params_anch = 3 * num_axes
     pos_dim = 2 if int(dimensions) == 2 else 3
     number_of_params_pos = pos_dim * (u - ux)
+
+    flex_mode_effective = str(flex_mode)
+    if use_flex and flex_mode_effective == "per_sample":
+        if tension_samp is None:
+            flex_mode_effective = "inverse_transform_planned"
+            if debug:
+                print("[flex] per-sample requested but tension_samp missing; falling back to inverse_transform_planned")
+        else:
+            t_arr = np.asarray(tension_samp, dtype=float)
+            if (
+                t_arr.ndim != 2
+                or t_arr.shape[0] != u
+                or t_arr.shape[1] != num_axes
+                or not np.any(np.isfinite(t_arr))
+            ):
+                flex_mode_effective = "inverse_transform_planned"
+                if debug:
+                    print(
+                        "[flex] per-sample requested but tension_samp invalid/empty; falling back to inverse_transform_planned"
+                    )
+
+    flex_param_count = 1 if (use_flex and flex_mode_effective == "inverse_transform_planned") else 0
     if debug:
         print(
             f"solve(): axes={num_axes} dims={dimensions} samples={u} known_xyz={ux} "
-            f"vars={params_anch + number_of_params_pos + params_perturb + (1 if use_flex else 0)} "
+            f"vars={params_anch + number_of_params_pos + params_perturb + int(flex_param_count)} "
             f"(+spool params)",
             flush=True,
         )
@@ -754,7 +927,7 @@ def solve(
             + [xyz_offset_max, xyz_offset_max, xyz_offset_max]
         )
 
-    if use_flex:
+    if flex_param_count:
         lb = np.append(lb, min_force_limit)
         ub = np.append(ub, max_force_limit)
 
@@ -775,7 +948,7 @@ def solve(
         )
         + [0, 0, 0]
     )
-    if use_flex:
+    if flex_param_count:
         x_guess += [0.0]
         maxiter = min(int(maxiter), 500)
 
@@ -803,6 +976,8 @@ def solve(
                     [params_buildup_local] * int(tries),
                     [params_perturb] * int(tries),
                     [use_flex] * int(tries),
+                    [flex_param_count] * int(tries),
+                    [flex_mode_effective] * int(tries),
                     [use_line_lengths] * int(tries),
                     [line_lengths_when_at_origin] * int(tries),
                     [spool_buildup_factor] * int(tries),
@@ -822,6 +997,7 @@ def solve(
                     [optimizer_method] * int(tries),
                     [ftol] * int(tries),
                     [eps] * int(tries),
+                    [tension_samp] * int(tries),
                 )
             )
     else:
@@ -835,6 +1011,8 @@ def solve(
                 params_buildup_local,
                 params_perturb,
                 use_flex,
+                flex_param_count,
+                flex_mode_effective,
                 use_line_lengths,
                 line_lengths_when_at_origin,
                 spool_buildup_factor,
@@ -854,6 +1032,7 @@ def solve(
                 optimizer_method,
                 ftol,
                 eps,
+                tension_samp,
             )
             for guess in random_guesses
         ]
