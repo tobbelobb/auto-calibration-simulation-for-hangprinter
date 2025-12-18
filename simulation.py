@@ -15,7 +15,6 @@ import signal
 import time
 
 from hangprinter_forward_transform import forward_transform
-from hangprinter_forward_transform import forward_transform5
 from flex_distance import *
 from util import *
 from data import *
@@ -501,7 +500,7 @@ def cost_sq_for_pos_samp_forward_transform(
 
     tot_err = 0
     for i in range(np.size(line_length_samp, 0)):
-        new_pos, spread = forward_transform5(anchors, line_length_samp[i])
+        new_pos, spread = forward_transform(anchors, line_length_samp[i], return_spread=True)
         diff = pos[i] - new_pos
         tot_err += _cost_from_residuals(diff, raw_squared_cost=raw_squared_cost, huber_delta_mm=huber_delta_mm)
         tot_err += spread
