@@ -36,10 +36,16 @@ resolved parameters passed to pos_to_motor_pos_samples.
 import argparse
 import json
 from pathlib import Path
+import sys
 from typing import Any, Dict, Iterable, List, Optional
 
 import numpy as np
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from autocal.json_schema import parse_jsonl_line, validate_payload
 from data import (
     constant_spool_buildup_factor,
     lines_per_spool,
@@ -204,6 +210,7 @@ def _synthesize(entry: Dict[str, Any]) -> Dict[str, Any]:
 def _write_jsonl(path: Path, entries: List[Dict[str, Any]]) -> None:
     with path.open("w", encoding="utf-8") as fh:
         for entry in entries:
+            validate_payload(entry, schema="synthetic_dataset_entry", source=str(path))
             fh.write(json.dumps(entry, separators=(",", ":")) + "\n")
 
 
@@ -223,8 +230,12 @@ def main() -> None:
     filled = 0
     skipped = 0
 
-    for line in _load_lines(args.input):
-        entry = json.loads(line)
+    for line_no, line in enumerate(_load_lines(args.input), start=1):
+        entry = parse_jsonl_line(
+            line,
+            schema="synthetic_dataset_entry",
+            source=f"{args.input}:{line_no}",
+        )
         has_samples = bool(entry.get("motor_samples"))
         if has_samples and args.skip_existing:
             skipped += 1

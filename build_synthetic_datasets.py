@@ -7,10 +7,16 @@ with empty motor_samples ready for populate via generate_synthetic_data.py.
 
 import json
 from pathlib import Path
+import sys
 from typing import Dict, Iterable, List, Tuple
 
 import numpy as np
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from autocal.json_schema import validate_payload
 from data import xyz_of_samp
 
 RNG = np.random.default_rng(12345)
@@ -234,6 +240,7 @@ def _write_jsonl(path: Path, entries: Iterable[Dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as fh:
         for entry in entries:
+            validate_payload(entry, schema="synthetic_dataset_entry", source=str(path))
             fh.write(json.dumps(entry, separators=(",", ":")) + "\n")
 
 
